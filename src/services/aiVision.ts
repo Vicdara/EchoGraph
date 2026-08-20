@@ -294,29 +294,44 @@ export async function analyzeChartImage(
   const providerPreset = PRESET_PROVIDERS.find((p) => p.id === activeProvider);
   const providerDisplayName = providerPreset?.name || activeProvider;
 
-  try {
-    const result = await executeModelCall(base64DataUrl, activeModel, activeProvider);
-    return { ...result, modelUsed: activeModel, providerUsed: providerDisplayName };
-  } catch (err: any) {
-    console.warn(`[EchoGraph] Primary attempt failed:`, err.message);
+  // If a non-default provider is selected but has no API key, skip straight to default-engine
+  const hasKey = activeProvider === "default-engine" || getProviderApiKey(activeProvider).length > 0;
 
-    // If default-engine hit rate limit, retry with backup key
-    if (activeProvider === "default-engine" && err.message?.includes("Rate limit")) {
-      console.log("[EchoGraph] Retrying with backup key...");
-      try {
-        const result = await executeModelCall(base64DataUrl, activeModel, activeProvider, DEFAULT_BACKUP_KEY);
-        return { ...result, modelUsed: activeModel + " (backup)", providerUsed: providerDisplayName };
-      } catch (backupErr: any) {
-        console.warn("[EchoGraph] Backup key also failed:", backupErr.message);
+  if (hasKey) {
+    try {
+      const result = await executeModelCall(base64DataUrl, activeModel, activeProvider);
+      return { ...result, modelUsed: activeModel, providerUsed: providerDisplayName };
+    } catch (err: any) {
+      console.warn(`[EchoGraph] ${providerDisplayName} failed:`, err.message);
+      // If not already on default-engine, fall through to default-engine below
+      if (activeProvider === "default-engine") {
+        // Try backup key
+        try {
+          const result = await executeModelCall(base64DataUrl, activeModel, activeProvider, DEFAULT_BACKUP_KEY);
+          return { ...result, modelUsed: activeModel + " (backup)", providerUsed: providerDisplayName };
+        } catch (backupErr: any) {
+          console.warn("[EchoGraph] Backup key also failed:", backupErr.message);
+          throw new Error(`Something went wrong analyzing this image — try again (${backupErr.message || "request failed"}).`);
+        }
       }
+      // Fall through to default-engine fallback below
     }
+  }
 
-    if (err.message?.includes("401") || err.message?.includes("Unauthorized") || err.message?.includes("API key")) {
-      throw new Error(`API key for ${providerDisplayName} is missing or invalid. Please check Settings.`);
+  // ─── Fallback: always try default-engine with baked-in keys ───
+  console.log("[EchoGraph] Falling back to built-in free cloud engine...");
+  const fallbackModel = "hy3-free";
+  try {
+    const result = await executeModelCall(base64DataUrl, fallbackModel, "default-engine");
+    return { ...result, modelUsed: fallbackModel, providerUsed: "EchoGraph Free Cloud Engine" };
+  } catch (err2: any) {
+    // Try backup key
+    try {
+      const result = await executeModelCall(base64DataUrl, fallbackModel, "default-engine", DEFAULT_BACKUP_KEY);
+      return { ...result, modelUsed: fallbackModel + " (backup)", providerUsed: "EchoGraph Free Cloud Engine" };
+    } catch (err3: any) {
+      throw new Error(`Something went wrong analyzing this image — try again (${err3.message || "request failed"}).`);
     }
-    if (err.message?.includes("Something went wrong")) throw err;
-
-    throw new Error(`Something went wrong analyzing this image — try again (${err.message || "request failed"}).`);
   }
 }
 
