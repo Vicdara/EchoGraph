@@ -59,7 +59,7 @@ const DEFAULT_BACKUP_KEY = "sk-fDH07Voj1h6D6ACin8oKfLXLCNuXHqVwLlcY6pcXZy48h0opM
 
 // Use local Vite proxy in browser to prevent CORS Connection Error, or fallback to direct URL
 function getDefaultBaseUrl(): string {
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+  if (typeof window !== "undefined") {
     return `${window.location.origin}/api/opencode`;
   }
   return "https://opencode.ai/zen/v1";
@@ -112,10 +112,13 @@ export function getEffectiveApiKey(): string {
 export function getEffectiveBaseUrl(): string {
   if (customBaseUrl) return customBaseUrl;
   const saved = localStorage.getItem("echograph_custom_base_url");
-  if (saved && saved.trim().length > 0) return saved.trim();
+  // If previously saved URL was the direct OpenCode URL, ignore it to prevent CORS
+  if (saved && saved.trim().length > 0 && !saved.includes("opencode.ai")) {
+    return saved.trim();
+  }
 
   const envBase = import.meta.env.VITE_OPENCODE_BASE_URL;
-  if (envBase && typeof envBase === "string" && envBase.trim().length > 0) {
+  if (envBase && typeof envBase === "string" && envBase.trim().length > 0 && !envBase.includes("opencode.ai")) {
     return envBase.trim();
   }
   return getDefaultBaseUrl();
