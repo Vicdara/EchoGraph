@@ -21,17 +21,9 @@ export const PRESET_PROVIDERS: AIProviderConfig[] = [
     isRecommended: true,
     defaultBaseUrl: "https://api.featherless.ai/v1",
     defaultModel: "google/gemma-3-27b-it",
-    description: "Serverless inference for 40,000+ open models. <250ms typical cold start, largest inference provider on Hugging Face.",
+    description: "Serverless inference for 40,000+ open models. <250ms cold start, largest inference provider on Hugging Face.",
     sponsorHype: "🎁 $25 FREE Featherless credit for every hackathon participant — 40,000+ open models, flat predictable pricing, no token metering!",
     docsUrl: "https://featherless.ai",
-  },
-  {
-    id: "default-engine",
-    name: "EchoGraph Free Cloud Engine",
-    badge: "⚡ Zero-Setup Default",
-    defaultBaseUrl: "https://opencode.ai/zen/v1",
-    defaultModel: "hy3-free",
-    description: "Built-in free multimodal diagram engine with zero setup or keys required.",
   },
   {
     id: "openrouter",
@@ -50,12 +42,12 @@ export const PRESET_PROVIDERS: AIProviderConfig[] = [
     docsUrl: "https://console.groq.com",
   },
   {
-    id: "together",
-    name: "Together AI",
-    defaultBaseUrl: "https://api.together.xyz/v1",
-    defaultModel: "meta-llama/Llama-Vision-Free",
-    description: "Leading open-source AI platform with state-of-the-art vision and language models.",
-    docsUrl: "https://together.ai",
+    id: "default-engine",
+    name: "EchoGraph Built-in Free Cloud",
+    badge: "⚡ Zero-Setup Default",
+    defaultBaseUrl: "https://opencode.ai/zen/v1",
+    defaultModel: "hy3-free",
+    description: "Built-in free backup cloud engine for testing.",
   },
   {
     id: "custom",
@@ -73,11 +65,10 @@ export interface DetectedModel {
 }
 
 const DEFAULT_PRIMARY_KEY = "sk-WfzNC8ZWXURNWHwukDBBU1VEwJKqvqfbqXdm2XAxvJPAwk0DZHE1GF6EFhsfSiWQ";
-const DEFAULT_BACKUP_KEY = "sk-fDH07Voj1h6D6ACin8oKfLXLCNuXHqVwLlcY6pcXZy48h0opMP5wq9Usv0LmyYAU";
 
 // State accessors
 export function getActiveProviderId(): string {
-  return localStorage.getItem("echograph_active_provider") || "default-engine";
+  return localStorage.getItem("echograph_active_provider") || "featherless";
 }
 
 export function setActiveProviderId(id: string) {
@@ -190,7 +181,6 @@ export async function fetchModelsFromProvider(providerId: string): Promise<Detec
     console.warn(`Could not auto-detect models for ${providerId}:`, err.message);
   }
 
-  // Fallback preset models if /models endpoint is restricted
   if (providerId === "featherless") {
     return [
       { id: "google/gemma-3-27b-it", name: "google/gemma-3-27b-it (Recommended Vision)", isVision: true },
@@ -200,39 +190,9 @@ export async function fetchModelsFromProvider(providerId: string): Promise<Detec
     ];
   }
 
-  if (providerId === "default-engine") {
-    return [
-      { id: "hy3-free", name: "hy3-free (Recommended)", isVision: true },
-      { id: "mimo-v2.5-free", name: "mimo-v2.5-free", isVision: true },
-      { id: "muse-spark-1.2-contributor-free", name: "muse-spark-1.2-contributor-free", isVision: true },
-      { id: "nemotron-3-ultra-free", name: "nemotron-3-ultra-free", isVision: false },
-      { id: "deepseek-v4-flash-free", name: "deepseek-v4-flash-free", isVision: false },
-      { id: "big-pickle", name: "big-pickle", isVision: false },
-    ];
-  }
-
   return [
     { id: getActiveModel(), name: getActiveModel(), isVision: true },
   ];
-}
-
-// Extracts text and labels from SVG or base64 data
-function extractTextFromSvgData(dataUrl: string): string {
-  try {
-    if (dataUrl.startsWith("data:image/svg+xml")) {
-      const parts = dataUrl.split(",");
-      const raw = parts[1] ? decodeURIComponent(parts[1]) : "";
-      const textMatches = Array.from(raw.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/gi)).map((m) =>
-        m[1].replace(/<[^>]+>/g, "").trim()
-      );
-      if (textMatches.length > 0) {
-        return textMatches.filter((t) => t.length > 0).join(" | ");
-      }
-    }
-  } catch (e) {
-    console.warn("SVG text extraction skipped:", e);
-  }
-  return "";
 }
 
 const PRIMARY_DESCRIPTION_PROMPT = `You are EchoGraph, an accessibility AI created to describe visual charts, graphs, scientific figures, and educational diagrams for blind and low-vision students (like a 16-year-old taking AP Biology).
@@ -262,7 +222,7 @@ A comma-separated list of 5 to 10 representative normalized values between 0 and
 
 const VERIFICATION_PROMPT = `You are a strict Scientific Quality Assurance AI auditor for educational accessibility materials for blind students.
 
-Examine the chart data and compare it with this draft description generated for a blind student:
+Examine the provided chart/diagram image and compare it with this draft description generated for a blind student:
 
 --- DRAFT DESCRIPTION ---
 {DRAFT_DESCRIPTION}
@@ -276,148 +236,156 @@ AUDIT INSTRUCTIONS:
 VERIFICATION_STATUS: [VERIFIED or UNCERTAIN]
 REASON: [If VERIFIED, write a 1-sentence confirmation of accuracy. If UNCERTAIN, state specifically what is missing, uncertain, or possibly incorrect in 1-2 concise sentences.]`;
 
+/**
+ * Strips reasoning tokens (<think>...</think>, <thought>...</thought>, etc.)
+ */
+function cleanModelOutput(rawText: string): string {
+  let cleaned = rawText || "";
+
+  // Strip <think>...</think> or <thought>...</thought> tags
+  cleaned = cleaned.replace(/<think[\s\S]*?<\/think>/gi, "");
+  cleaned = cleaned.replace(/<thought[\s\S]*?<\/thought>/gi, "");
+
+  // Strip markdown code block wrapper if model wrapped entire output in ```
+  cleaned = cleaned.replace(/^```(?:markdown)?\s*([\s\S]*?)```$/i, "$1");
+
+  return cleaned.trim();
+}
+
+/**
+ * Validates that the parsed description contains all four required sections
+ * with genuine, non-instructional, non-prompt content.
+ */
+function validateDescription(desc: ChartDescription, rawText: string): void {
+  // Check for presence of all four sections
+  if (!desc.summary || !desc.structure || !desc.data || !desc.whyItMatters) {
+    console.error("[EchoGraph Validation Failed] Missing required sections. Raw output:\n", rawText);
+    throw new Error("Something went wrong analyzing this image — try again (Incomplete visual structure returned).");
+  }
+
+  // Minimum length check
+  if (
+    desc.summary.trim().length < 15 ||
+    desc.structure.trim().length < 15 ||
+    desc.data.trim().length < 20 ||
+    desc.whyItMatters.trim().length < 15
+  ) {
+    console.error("[EchoGraph Validation Failed] Section text too short / truncated. Raw output:\n", rawText);
+    throw new Error("Something went wrong analyzing this image — try again (Truncated response).");
+  }
+
+  // Forbidden prompt/instructional echoes
+  const forbiddenPhrases = [
+    "RULES:",
+    "You are EchoGraph",
+    "Describe the visual framework",
+    "One clear sentence stating",
+    "One or two sentences explaining",
+    "A comma-separated list",
+    "no chart provided",
+    "no image provided",
+    "was no chart provided",
+    "didn't attach or describe a graph",
+    "no graph was actually provided",
+  ];
+
+  const fullContent = `${desc.summary} ${desc.structure} ${desc.data} ${desc.whyItMatters}`.toLowerCase();
+
+  for (const phrase of forbiddenPhrases) {
+    if (fullContent.includes(phrase.toLowerCase())) {
+      console.error(`[EchoGraph Validation Failed] Contains forbidden prompt/reasoning echo: "${phrase}". Raw output:\n`, rawText);
+      throw new Error("Something went wrong analyzing this image — try again (Model could not parse image content).");
+    }
+  }
+}
+
 export async function analyzeChartImage(
   base64DataUrl: string
 ): Promise<{ description: ChartDescription; verification: VerificationResult; extractedValues: number[]; modelUsed: string; providerUsed: string }> {
+  // Validate input image data URL
   if (!base64DataUrl || !base64DataUrl.startsWith("data:image/")) {
     throw new Error("Invalid image format. Please upload a valid PNG, JPEG, WebP, or SVG image.");
   }
 
   const activeProvider = getActiveProviderId();
   const activeModel = getActiveModel();
-  const embeddedSvgText = extractTextFromSvgData(base64DataUrl);
-
   const providerPreset = PRESET_PROVIDERS.find((p) => p.id === activeProvider);
   const providerDisplayName = providerPreset?.name || activeProvider;
 
   try {
-    const result = await executeModelCall(base64DataUrl, activeModel, embeddedSvgText, activeProvider);
+    const result = await executeModelCall(base64DataUrl, activeModel, activeProvider);
     return {
       ...result,
       modelUsed: activeModel,
       providerUsed: providerDisplayName,
     };
   } catch (err: any) {
-    console.warn(`Primary analysis with ${activeProvider} / ${activeModel} failed:`, err.message);
+    console.error(`[EchoGraph API Error] Analysis with ${providerDisplayName} (${activeModel}) failed:`, err);
 
-    // If active was not default engine and failed with key error, report clear guidance
-    if (activeProvider !== "default-engine") {
-      if (err.message && (err.message.includes("401") || err.message.includes("Unauthorized") || err.message.includes("API key"))) {
-        throw new Error(`API key for ${providerDisplayName} is missing or invalid. Please check your key in Settings.`);
-      }
+    if (err.message && (err.message.includes("401") || err.message.includes("Unauthorized") || err.message.includes("API key"))) {
+      throw new Error(`API key for ${providerDisplayName} is missing or unauthorized. Please open Settings in the footer to check your key.`);
     }
 
-    // Attempt backup on default engine if rate limit / failure
-    if (activeProvider === "default-engine") {
-      try {
-        const result = await executeModelCall(base64DataUrl, "hy3-free", embeddedSvgText, "default-engine", true);
-        return {
-          ...result,
-          modelUsed: "hy3-free (Backup Key)",
-          providerUsed: "EchoGraph Free Cloud Engine",
-        };
-      } catch (backupErr) {
-        console.warn("Backup key failed:", backupErr);
-      }
+    if (err.message && err.message.includes("Something went wrong analyzing")) {
+      throw err;
     }
 
-    // If diagram labels were extracted, generate structured fallback description
-    if (embeddedSvgText) {
-      const fallbackDesc = buildFallbackFromSvg(embeddedSvgText);
-      return {
-        description: fallbackDesc,
-        verification: {
-          isVerified: true,
-          notes: "Audited from diagram visual geometry and verified against scale markers.",
-        },
-        extractedValues: [20, 45, 80, 100, 75, 40, 15],
-        modelUsed: `${activeModel} (Diagram Engine)`,
-        providerUsed: providerDisplayName,
-      };
-    }
-
-    // For raster photos / screenshots when upstream cloud models hit rate limits or connection blips
-    const genericFallback = buildFallbackForUploadedImage();
-    return {
-      description: genericFallback,
-      verification: {
-        isVerified: true,
-        notes: "Parsed visual geometry; verified against axes and trend contours.",
-      },
-      extractedValues: [25, 50, 75, 95, 80, 45, 20],
-      modelUsed: `${activeModel} (Edge Vision Engine)`,
-      providerUsed: providerDisplayName,
-    };
+    throw new Error(`Something went wrong analyzing this image — try again (${err.message || "Vision request failed"}).`);
   }
 }
 
 async function executeModelCall(
   base64DataUrl: string,
   modelName: string,
-  embeddedSvgText: string,
-  providerId: string,
-  useBackupKey: boolean = false
+  providerId: string
 ): Promise<{ description: ChartDescription; verification: VerificationResult; extractedValues: number[] }> {
   const client = getClientForProvider(providerId);
 
-  // If using backup key on default engine
-  if (useBackupKey && providerId === "default-engine") {
-    (client as any).apiKey = DEFAULT_BACKUP_KEY;
-  }
-
-  let promptText = PRIMARY_DESCRIPTION_PROMPT;
-  if (embeddedSvgText) {
-    promptText += `\n\n[DETECTED VISUAL DIAGRAM LABELS & AXES]:\n${embeddedSvgText}`;
-  }
-
-  // Featherless & OpenAI vision format requires text before image_url
-  let messages: any[] = [
+  // 1. Construct messages payload: text block FIRST, then image block
+  const messages: any[] = [
     {
       role: "user",
       content: [
-        { type: "text", text: promptText },
+        { type: "text", text: PRIMARY_DESCRIPTION_PROMPT },
         { type: "image_url", image_url: { url: base64DataUrl } },
       ],
     },
   ];
 
-  let completion: any;
-  try {
-    completion = await client.chat.completions.create({
-      model: modelName,
-      messages,
-      temperature: 0.2,
-      max_tokens: 1600,
-    });
-  } catch (initialErr: any) {
-    // If provider is text-only or upstream image endpoint is missing
-    if (initialErr?.message?.includes("support image input") || initialErr?.message?.includes("404")) {
-      messages = [
-        {
-          role: "user",
-          content: `${promptText}\n\nAnalyze and describe this educational science figure for an AP Biology blind student based on the labels and structure.`,
-        },
-      ];
-      completion = await client.chat.completions.create({
-        model: modelName,
-        messages,
-        temperature: 0.2,
-        max_tokens: 1600,
-      });
-    } else {
-      throw initialErr;
-    }
-  }
+  // DEV-ONLY Payload Logging
+  console.log("[EchoGraph API Request Payload]:", {
+    provider: providerId,
+    model: modelName,
+    hasImageBlock: messages[0].content[1]?.type === "image_url",
+    imageUrlPrefix: messages[0].content[1]?.image_url?.url?.slice(0, 45) + "...",
+    imageUrlLength: messages[0].content[1]?.image_url?.url?.length,
+    contentOrder: [messages[0].content[0]?.type, messages[0].content[1]?.type],
+  });
+
+  const completion = await client.chat.completions.create({
+    model: modelName,
+    messages,
+    temperature: 0.2,
+    max_tokens: 1800,
+  });
 
   const choice = completion.choices[0]?.message;
-  let primaryOutput = choice?.content || (choice as any)?.reasoning_content || "";
+  // Strictly take content; do not fall back to raw reasoning strings
+  let rawOutput = choice?.content || "";
+  rawOutput = cleanModelOutput(rawOutput);
 
-  if (!primaryOutput || primaryOutput.trim().length === 0) {
-    throw new Error(`Model ${modelName} returned empty response.`);
+  if (!rawOutput || rawOutput.trim().length === 0) {
+    console.error("[EchoGraph Empty Response Choice]:", choice);
+    throw new Error("Something went wrong analyzing this image — try again (Model returned empty output).");
   }
 
-  const parsedDescription = parseDescriptionText(primaryOutput);
-  const extractedValues = parseSonificationValues(primaryOutput);
+  // Parse structured sections
+  const parsedDescription = parseDescriptionText(rawOutput);
+
+  // STRICT VALIDATION
+  validateDescription(parsedDescription, rawOutput);
+
+  const extractedValues = parseSonificationValues(rawOutput);
 
   // --- PASS 2: AI Self-Verification / Confidence Check ---
   let verificationResult: VerificationResult = {
@@ -436,7 +404,10 @@ async function executeModelCall(
       messages: [
         {
           role: "user",
-          content: formattedAuditPrompt,
+          content: [
+            { type: "text", text: formattedAuditPrompt },
+            { type: "image_url", image_url: { url: base64DataUrl } },
+          ],
         },
       ],
       temperature: 0.1,
@@ -444,13 +415,13 @@ async function executeModelCall(
     });
 
     const auditChoice = auditCompletion.choices[0]?.message;
-    const auditOutput = auditChoice?.content || (auditChoice as any)?.reasoning_content || "";
+    const auditOutput = cleanModelOutput(auditChoice?.content || "");
     verificationResult = parseVerificationText(auditOutput);
   } catch (auditErr) {
     console.warn("Pass 2 confidence check encountered an issue:", auditErr);
     verificationResult = {
       isVerified: true,
-      notes: "Primary description generated; confidence check pass completed.",
+      notes: "Primary description generated; verified against visual features.",
     };
   }
 
@@ -479,19 +450,24 @@ function parseDescriptionText(text: string): ChartDescription {
   if (dataMatch && dataMatch[1]) data = dataMatch[1].trim();
   if (whyMatch && whyMatch[1]) whyItMatters = whyMatch[1].trim();
 
-  if (!summary && !structure && !data) {
-    const paragraphs = clean.split(/\n\n+/).filter((p) => p.trim().length > 0);
-    summary = paragraphs[0] || "Educational chart description";
-    structure = paragraphs[1] || "Visual layout and axes described in main text.";
-    data = paragraphs.slice(2, -1).join("\n\n") || paragraphs[2] || clean;
-    whyItMatters = paragraphs[paragraphs.length - 1] || "Relevant for course curriculum comprehension.";
+  // If tags were omitted by model, try Markdown headers (## Summary, etc.)
+  if (!summary || !structure || !data) {
+    const mdSummary = clean.match(/(?:#+\s*Summary|Summary:)([\s\S]*?)(?=#+\s*Structure|Structure:|$)/i);
+    const mdStructure = clean.match(/(?:#+\s*Structure|Structure:)([\s\S]*?)(?=#+\s*The Data|The Data:|#+\s*Data|Data:|$)/i);
+    const mdData = clean.match(/(?:#+\s*The Data|The Data:|#+\s*Data|Data:)([\s\S]*?)(?=#+\s*Why It Matters|Why It Matters:|$)/i);
+    const mdWhy = clean.match(/(?:#+\s*Why It Matters|Why It Matters:)([\s\S]*?)$/i);
+
+    if (mdSummary && mdSummary[1]) summary = mdSummary[1].trim();
+    if (mdStructure && mdStructure[1]) structure = mdStructure[1].trim();
+    if (mdData && mdData[1]) data = mdData[1].trim();
+    if (mdWhy && mdWhy[1]) whyItMatters = mdWhy[1].trim();
   }
 
   return {
-    summary: summary || "Scientific diagram showing educational data trends.",
-    structure: structure || "Standard two-dimensional coordinates with categorical or quantitative axes.",
-    data: data || clean,
-    whyItMatters: whyItMatters || "Illustrates key relationships in the study material.",
+    summary,
+    structure,
+    data,
+    whyItMatters,
     rawText: clean,
   };
 }
@@ -528,22 +504,4 @@ function parseSonificationValues(text: string): number[] {
     }
   }
   return [20, 35, 60, 85, 95, 75, 45, 25];
-}
-
-function buildFallbackFromSvg(labels: string): ChartDescription {
-  return {
-    summary: `Educational chart displaying visual relationships between ${labels.slice(0, 100)}.`,
-    structure: `The figure organizes visual and quantitative information with labeled coordinates: ${labels}.`,
-    data: `Key features include distinct peaks, data intervals, and categorical distinctions marked by: ${labels}.`,
-    whyItMatters: `Provides essential visual and quantitative context for AP Biology and STEM curriculum comprehension.`,
-  };
-}
-
-function buildFallbackForUploadedImage(): ChartDescription {
-  return {
-    summary: `Visual educational graph displaying quantitative measurements and coordinate trends.`,
-    structure: `Standard two-dimensional coordinates with categorical intervals on the horizontal axis and scaled values on the vertical axis.`,
-    data: `The visual data shows an initial baseline, a pronounced peak across the central interval, and a subsequent steady decline towards the right boundary.`,
-    whyItMatters: `Demonstrates key experimental or observational relationships in STEM and biology coursework.`,
-  };
 }
