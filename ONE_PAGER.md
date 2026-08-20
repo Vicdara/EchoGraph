@@ -4,64 +4,42 @@
 
 ---
 
-## 1. Who We Built This For
+## 👤 Who We Built This For
 
-**Meet Amara:** A 16-year-old high school student who is legally blind and taking AP Biology. 
+**Amara, 16, legally blind, taking AP Biology.**
 
-Her textbook and lab worksheets are filled with enzyme kinetics curves, metabolic bar charts, cellular respiration ATP tables, and labeled organelle diagrams. In almost every digital textbook or school PDF, the image "alt text" is either completely missing or says something useless like `figure_1.png`. 
+Her textbook and worksheets are full of bar charts, line graphs, and labeled diagrams. The digital materials either have no alt text or something useless like `image1.png`. 
 
-Her screen reader is left silent. Amara isn't held back by biology — she is locked out of the **~30% of STEM curriculum** that is delivered as visual images rather than text. 
-
-EchoGraph gives Amara immediate autonomy: she takes a photo of a textbook page, drops a screenshot into her browser, or pastes from clipboard (`Ctrl+V`), and gets a structured, spoken explanation of what the chart proves, what its axes measure, and what its numbers mean — read aloud instantly with high-fidelity pitch sonification and braille-ready text export.
+Her screen reader has nothing to read when she hits one of these figures — she is locked out of a real chunk of every chapter, not because the science is hard, but because the material was delivered as a picture with no text behind it.
 
 ---
 
-## 2. The Core Barrier EchoGraph Removes
+## 🚫 The Barrier
 
-Existing solutions fail blind students in two ways:
-1. **Generic Image Captioning is Vague:** Standard image-to-text models say *"A graph with blue and red lines"* without stating what the axes measure, what the units are, or what biological phenomenon is depicted.
-2. **Hallucination Risk in STEM:** In science, an AI hallucinating a number or inverting a trend isn't just a minor glitch — it causes a student to learn incorrect science.
+**Chart and graph images in STEM material are effectively invisible to screen readers.**
 
----
-
-## 3. How EchoGraph Works (The 2-Pass Architecture)
-
-```
-[ Image Upload / Paste / Photo ]
-                │
-                ▼
-   [ Pass 1: Visual Structural Breakdown ]
-   Model: hy3-free / mimo-v2.5-free on OpenCode Zen
-   Outputs: Summary, Structure, The Data, Why It Matters, Sonification Curve
-                │
-                ▼
-   [ Pass 2: AI Self-Verification / Audit ]
-   Checks draft description against original image coordinates & axes
-   Outputs: "✓ Verified" or "⚠ Uncertain about: [specific thing]"
-                │
-                ▼
-   [ Instant Accessible Multi-Modal Output ]
-   1. Spoken Audio (Browser-native SpeechSynthesis, auto-plays, zero-cost)
-   2. Pitch Sonification (Web Audio API tone sequence mapping data curve)
-   3. Screen Reader Live Announcements (ARIA live regions)
-   4. High-Contrast WCAG AAA View (Pure Black / Pure White / Zero Gray)
-   5. Copy as Text (Ready for Braille displays & notes)
-```
+This is not a general "AI can't see" problem — it is specifically that educational content assumes visual delivery is fine, and never accounts for the student who cannot see it.
 
 ---
 
-## 4. Key Differentiators
+## ⚙️ How It Works
 
-- **Visible 2-Pass Confidence Check:** The AI audits its own visual perception before finalizing. If an axis or fine number is ambiguous, it alerts the student (`⚠ Uncertain about...`) instead of confidently misleading them.
-- **Data Sonification:** Students can hear the physical curve of a line or bar graph as ascending and descending pitch frequencies using the Web Audio API.
-- **Built for Real Assistive Tech:** Styled in Atkinson Hyperlegible (developed by the Braille Institute for low vision), 100% keyboard navigable, aria-live region announcements, and a genuine high-contrast toggle.
-- **OpenCode Free Models & Zero Setup:** Bundled with OpenCode Zen free models (`hy3-free`, `mimo-v2.5-free`, `muse-spark-1.2`, `nemotron-3-ultra-free`, `deepseek-v4-flash-free`) and 5 representative AP Biology test graphs.
+1. **Upload or Paste:** The student uploads or pastes an image of a chart, graph, or diagram — a screenshot prepared by a teacher, a worksheet scan, or a phone photo of a textbook page.
+2. **Structured Vision Analysis:** A vision-capable model analyzes the image and generates a structured description: the type of chart, what is being measured, the actual data and trends, and why it matters in the lesson.
+3. **AI Self-Verification Pass:** Before finalizing, a second AI pass cross-checks the draft description against the source image and flags anything uncertain or possibly wrong — ensuring a blind student is never relying on a guess dressed up as fact.
+4. **Accessible Delivery:** The result appears as properly structured, screen-reader-friendly text (`aria-live`). If the student has VoiceOver, NVDA, or JAWS active, their screen reader announces and reads the text naturally. A manual **"▶ Replay Audio"** button is also provided for on-demand playback.
 
 ---
 
-## 5. Technical Stack
+## 💡 Why This Is Different
 
-- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons
-- **AI Vision Engine:** OpenCode AI Zen Gateway (`hy3-free`, `mimo-v2.5-free`, `muse-spark-1.2`, `nemotron-3-ultra-free`, `deepseek-v4-flash-free`)
-- **Audio & Accessibility:** Web Speech API (`SpeechSynthesis`), Web Audio API (`AudioContext` oscillators), Atkinson Hyperlegible Typography
-- **Zero Backend Required:** Static, edge-deployable client application
+Most "AI + accessibility" tools stop at generating a vague one-sentence caption. 
+
+**EchoGraph treats accuracy as the safety requirement it actually is.** A wrong description of a science graph does not just annoy a user — it teaches a blind student the wrong science. The verification pass is a core safety feature, not a decorative bonus.
+
+---
+
+## 🤖 AI Tools Used (Required Disclosure)
+
+- **AI Model & Inference:** Featherless AI (`google/gemma-3-27b-it`) & OpenCode AI (`hy3-free`, `mimo-v2.5-free`)
+- **Coding Assistant:** Google Antigravity (architecture, accessible UI components, Web Audio sonification, WCAG compliance)
