@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #f7f5f0;
+    --text-primary: #1a2b4a;
+    --accent-teal: #0d9488;
+    --card-bg: #ffffff;
+    --border-color: #ded7c5;
+  }
+
+  /* Pure High Contrast Mode (WCAG AAA compliant: Pure Black/Pure White, Zero Grays) */
+  html.high-contrast {
+    --bg-primary: #000000;
+    --text-primary: #ffffff;
+    --accent-teal: #00ffff;
+    --card-bg: #000000;
+    --border-color: #ffffff;
+    background-color: #000000 !important;
+    color: #ffffff !important;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Atkinson Hyperlegible', system-ui, -apple-system, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Universal high-visibility focus indicator for keyboard navigation */
+  *:focus-visible {
+    outline: 3px solid #0d9488 !important;
+    outline-offset: 2px !important;
+  }
+
+  html.high-contrast *:focus-visible {
+    outline: 4px solid #ffff00 !important;
+    outline-offset: 3px !important;
+  }
+}
+
+/* High contrast overrides for custom components */
+html.high-contrast .hc-border {
+  border-color: #ffffff !important;
+}
+
+html.high-contrast .hc-bg-card {
+  background-color: #000000 !important;
+  border: 2px solid #ffffff !important;
+  color: #ffffff !important;
+}
+
+html.high-contrast .hc-text-subtle {
+  color: #ffffff !important;
+  opacity: 0.95;
+}
+
+html.high-contrast .hc-btn-primary {
+  background-color: #000000 !important;
+  color: #ffff00 !important;
+  border: 3px solid #ffff00 !important;
+  font-weight: 700 !important;
+}
+
+html.high-contrast .hc-btn-primary:hover,
+html.high-contrast .hc-btn-primary:focus {
+  background-color: #ffff00 !important;
+  color: #000000 !important;
+}
+
+html.high-contrast .hc-btn-secondary {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+}
+
+html.high-contrast .hc-badge-verified {
+  background-color: #000000 !important;
+  color: #00ff00 !important;
+  border: 2px solid #00ff00 !important;
+}
+
+html.high-contrast .hc-badge-uncertain {
+  background-color: #000000 !important;
+  color: #ffff00 !important;
+  border: 2px solid #ffff00 !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1ede3;
+}
+
+html.high-contrast ::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0d9488;
+  border-radius: 4px;
+}
+
+html.high-contrast ::-webkit-scrollbar-thumb {
+  background: #ffffff;
+}
