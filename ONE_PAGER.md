@@ -31,7 +31,7 @@ Existing solutions fail blind students in two ways:
                 │
                 ▼
    [ Pass 1: Visual Structural Breakdown ]
-   Model: google/gemma-3-27b-it on Featherless AI
+   Model: hy3-free / mimo-v2.5-free on OpenCode Zen
    Outputs: Summary, Structure, The Data, Why It Matters, Sonification Curve
                 │
                 ▼
@@ -55,13 +55,13 @@ Existing solutions fail blind students in two ways:
 - **Visible 2-Pass Confidence Check:** The AI audits its own visual perception before finalizing. If an axis or fine number is ambiguous, it alerts the student (`⚠ Uncertain about...`) instead of confidently misleading them.
 - **Data Sonification:** Students can hear the physical curve of a line or bar graph as ascending and descending pitch frequencies using the Web Audio API.
 - **Built for Real Assistive Tech:** Styled in Atkinson Hyperlegible (developed by the Braille Institute for low vision), 100% keyboard navigable, aria-live region announcements, and a genuine high-contrast toggle.
-- **Zero-Setup Judge Experience:** Pre-loaded with 5 representative AP Biology test graphs (Enzyme Kinetics, Cellular Respiration ATP Yield, Plant Cell Organelles, Predator-Prey Cycles, Trophic Energy Pyramid).
+- **OpenCode Free Models & Zero Setup:** Bundled with OpenCode Zen free models (`hy3-free`, `mimo-v2.5-free`, `muse-spark-1.2`, `nemotron-3-ultra-free`, `deepseek-v4-flash-free`) and 5 representative AP Biology test graphs.
 
 ---
 
 ## 5. Technical Stack
 
 - **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons
-- **AI Vision Engine:** Featherless AI OpenAI-compatible endpoint with `google/gemma-3-27b-it`
+- **AI Vision Engine:** OpenCode AI Zen Gateway (`hy3-free`, `mimo-v2.5-free`, `muse-spark-1.2`, `nemotron-3-ultra-free`, `deepseek-v4-flash-free`)
 - **Audio & Accessibility:** Web Speech API (`SpeechSynthesis`), Web Audio API (`AudioContext` oscillators), Atkinson Hyperlegible Typography
 - **Zero Backend Required:** Static, edge-deployable client application

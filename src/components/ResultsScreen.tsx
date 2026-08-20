@@ -158,7 +158,7 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
                 {fileName}
               </h2>
               <p className="text-xs text-[#718096] dark:text-white/60 mt-0.5">
-                AI pass 1 generated • AI pass 2 verified
+                AI pass 1 generated • AI pass 2 verified {record.modelUsed ? `(${record.modelUsed})` : ''}
               </p>
             </div>
           </div>

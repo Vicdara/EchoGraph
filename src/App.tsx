@@ -45,8 +45,8 @@ export const App: React.FC = () => {
     setLoadingStep('Pass 1/2: Extracting axes, trends & values...');
 
     try {
-      // Small visual pause for step 2 indicator during multi-pass execution
-      const analysisPromise = analyzeChartImage(imageDataUrl, 'google/gemma-3-27b-it');
+      // Multi-pass visual perception execution
+      const analysisPromise = analyzeChartImage(imageDataUrl);
       
       const stepTimer = setTimeout(() => {
         setLoadingStep('Pass 2/2: Auditing description for accuracy...');
@@ -63,6 +63,7 @@ export const App: React.FC = () => {
         description: result.description,
         verification: result.verification,
         extractedValues: sampleData?.precomputedValues || result.extractedValues,
+        modelUsed: result.modelUsed,
       };
 
       setCurrentRecord(newRecord);

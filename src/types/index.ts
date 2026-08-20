@@ -21,6 +21,7 @@ export interface AnalysisRecord {
   description: ChartDescription;
   verification: VerificationResult;
   extractedValues?: number[]; // For sonification audio tones
+  modelUsed?: string;
 }
 
 export interface SampleGraph {

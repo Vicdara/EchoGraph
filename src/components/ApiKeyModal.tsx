@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, CheckCircle, ShieldAlert } from 'lucide-react';
-import { setCustomApiKey } from '../services/featherless';
+import { X, Key, CheckCircle, ShieldAlert, Cpu, Globe } from 'lucide-react';
+import { 
+  AVAILABLE_MODELS, 
+  setCustomApiKey, 
+  setCustomBaseUrl, 
+  setSelectedModel, 
+  getSelectedModel, 
+  getEffectiveBaseUrl 
+} from '../services/aiVision';
 
 interface ApiKeyModalProps {
   isOpen: boolean;
@@ -14,7 +21,20 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   highContrast,
 }) => {
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [baseUrlInput, setBaseUrlInput] = useState('');
+  const [currentModel, setCurrentModel] = useState<string>('hy3-free');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentModel(getSelectedModel());
+      setBaseUrlInput(getEffectiveBaseUrl());
+      const savedKey = localStorage.getItem('echograph_custom_api_key');
+      if (savedKey) {
+        setApiKeyInput(savedKey);
+      }
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -31,7 +51,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setCustomApiKey(apiKeyInput);
-    setStatusMessage('Custom session API key active.');
+    setCustomBaseUrl(baseUrlInput);
+    setSelectedModel(currentModel);
+    setStatusMessage('Settings updated successfully!');
     setTimeout(() => {
       onClose();
       setStatusMessage(null);
@@ -41,7 +63,11 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   const handleClear = () => {
     setApiKeyInput('');
     setCustomApiKey(null);
-    setStatusMessage('Cleared. Using default bundled API key.');
+    setCustomBaseUrl(null);
+    setSelectedModel('hy3-free');
+    setCurrentModel('hy3-free');
+    setBaseUrlInput('https://opencode.ai/zen/v1');
+    setStatusMessage('Reset to OpenCode Free Models & Default Key.');
     setTimeout(() => {
       onClose();
       setStatusMessage(null);
@@ -56,7 +82,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
       aria-labelledby="api-modal-title"
     >
       <div
-        className={`w-full max-w-lg rounded-xl border p-6 shadow-2xl transition-all ${
+        className={`w-full max-w-xl rounded-2xl border p-6 sm:p-7 shadow-2xl transition-all max-h-[90vh] overflow-y-auto ${
           highContrast
             ? 'bg-black text-white border-white'
             : 'bg-white text-[#1a2b4a] border-[#ded7c5]'
@@ -66,12 +92,12 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           <div className="flex items-center gap-2.5">
             <Key className="w-5 h-5 text-[#0d9488] dark:text-yellow-400" />
             <h2 id="api-modal-title" className="text-xl font-bold">
-              Custom Featherless API Key (Optional)
+              AI Model &amp; API Key Settings
             </h2>
           </div>
           <button
             onClick={onClose}
-            aria-label="Close API Key dialog"
+            aria-label="Close settings dialog"
             className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-white/20 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -79,28 +105,53 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
         </div>
 
         <p className="mt-4 text-sm text-[#4a5568] dark:text-white/90">
-          The app works automatically out-of-the-box with free AI models bundled for judges. If you prefer to use your own personal Featherless API key, you can enter it below.
+          EchoGraph connects to <strong>OpenCode Zen</strong> free models. You can select your preferred free vision model or provide your own API key.
         </p>
 
-        <div className="mt-3 p-3 rounded-lg bg-[#f0f4f9] dark:bg-white/10 text-xs flex items-start gap-2 border border-[#b7cde3] dark:border-white/30">
-          <ShieldAlert className="w-4 h-4 shrink-0 text-[#1a2b4a] dark:text-yellow-400 mt-0.5" />
-          <span>
-            <strong>Privacy Note:</strong> Your key is kept only in browser memory for this session and is never logged or saved to disk.
-          </span>
-        </div>
-
-        <form onSubmit={handleSave} className="mt-5 space-y-4">
+        <form onSubmit={handleSave} className="mt-5 space-y-5">
+          {/* Model Selection Dropdown */}
           <div>
             <label
-              htmlFor="featherless-key-input"
-              className="block text-sm font-semibold mb-1"
+              htmlFor="model-selection"
+              className="flex items-center gap-2 text-sm font-bold mb-1.5"
             >
-              Featherless API Key
+              <Cpu className="w-4 h-4 text-[#0d9488] dark:text-yellow-400" />
+              <span>Select Vision Model</span>
+            </label>
+            <select
+              id="model-selection"
+              value={currentModel}
+              onChange={(e) => setCurrentModel(e.target.value)}
+              className={`w-full px-4 py-2.5 rounded-lg border text-sm font-medium transition-all focus-visible:ring-4 ${
+                highContrast
+                  ? 'bg-black text-white border-white focus:border-yellow-400'
+                  : 'bg-[#faf9f6] text-[#1a2b4a] border-[#ded7c5] focus:border-[#0d9488]'
+              }`}
+            >
+              {AVAILABLE_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name} {model.isFree ? '— [FREE]' : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-[#718096] dark:text-white/70 mt-1">
+              All free models include automatic multi-model fallback in case of rate limits.
+            </p>
+          </div>
+
+          {/* API Key Input */}
+          <div>
+            <label
+              htmlFor="opencode-key-input"
+              className="flex items-center gap-2 text-sm font-bold mb-1.5"
+            >
+              <Key className="w-4 h-4 text-[#0d9488] dark:text-yellow-400" />
+              <span>OpenCode / OpenAI-Compatible API Key (Optional)</span>
             </label>
             <input
-              id="featherless-key-input"
+              id="opencode-key-input"
               type="password"
-              placeholder="featherless-api-key-..."
+              placeholder="sk-... (Leave empty to use free built-in OpenCode keys)"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
               className={`w-full px-4 py-2.5 rounded-lg border font-mono text-sm transition-all focus-visible:ring-4 ${
@@ -109,6 +160,36 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                   : 'bg-[#faf9f6] text-[#1a2b4a] border-[#ded7c5] focus:border-[#0d9488]'
               }`}
             />
+          </div>
+
+          {/* Base URL (Optional) */}
+          <div>
+            <label
+              htmlFor="base-url-input"
+              className="flex items-center gap-2 text-sm font-bold mb-1.5"
+            >
+              <Globe className="w-4 h-4 text-[#0d9488] dark:text-yellow-400" />
+              <span>API Base URL</span>
+            </label>
+            <input
+              id="base-url-input"
+              type="text"
+              placeholder="https://opencode.ai/zen/v1"
+              value={baseUrlInput}
+              onChange={(e) => setBaseUrlInput(e.target.value)}
+              className={`w-full px-4 py-2.5 rounded-lg border font-mono text-xs transition-all focus-visible:ring-4 ${
+                highContrast
+                  ? 'bg-black text-white border-white focus:border-yellow-400'
+                  : 'bg-[#faf9f6] text-[#1a2b4a] border-[#ded7c5] focus:border-[#0d9488]'
+              }`}
+            />
+          </div>
+
+          <div className="p-3 rounded-lg bg-[#f0f4f9] dark:bg-white/10 text-xs flex items-start gap-2 border border-[#b7cde3] dark:border-white/30">
+            <ShieldAlert className="w-4 h-4 shrink-0 text-[#1a2b4a] dark:text-yellow-400 mt-0.5" />
+            <span>
+              <strong>Built-in Keys:</strong> Default configured with OpenCode Zen free models (`hy3-free`, `mimo-v2.5-free`, `muse-spark-1.2`, `nemotron-3-ultra-free`, `deepseek-v4-flash-free`).
+            </span>
           </div>
 
           {statusMessage && (
@@ -124,7 +205,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               onClick={handleClear}
               className="px-4 py-2 rounded-lg text-sm font-semibold border border-[#ded7c5] dark:border-white hover:bg-gray-100 dark:hover:bg-white/20 transition-colors"
             >
-              Reset to Default
+              Reset to Free Defaults
             </button>
             <button
               type="submit"
@@ -134,7 +215,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                   : 'bg-[#0d9488] hover:bg-[#0f766e]'
               }`}
             >
-              Save for Session
+              Save Settings
             </button>
           </div>
         </form>

@@ -30,6 +30,7 @@ EchoGraph allows Amara to snap a photo, drag a screenshot, or paste directly fro
 - ⌨️ **100% Keyboard & Screen Reader Accessible:** Global paste handler, focus rings, ARIA live regions, and semantic landmark navigation.
 - 📋 **Braille-Ready Text Export:** One-click copy formatted for notes and refreshable braille displays.
 - 🧪 **1-Click Test Graphs:** Built-in suite of AP Biology test figures (Enzyme Kinetics Line Graph, Cellular Respiration ATP Bar Chart, Plant Cell Diagram, Textbook Predator-Prey Graph, Trophic Level Energy Pyramid).
+- ⚙️ **OpenCode Free Models & Custom Key Support:** Powered by OpenCode Zen with full support for free models (`hy3-free`, `mimo-v2.5-free`, `muse-spark-1.2`, `nemotron-3-ultra-free`, `deepseek-v4-flash-free`) plus custom API key and endpoint configuration.
 
 ---
 
@@ -37,8 +38,14 @@ EchoGraph allows Amara to snap a photo, drag a screenshot, or paste directly fro
 
 - **Framework:** React 18 + Vite + TypeScript
 - **Styling:** Tailwind CSS (Atkinson Hyperlegible, custom WCAG palette)
-- **AI Vision Engine:** [Featherless AI](https://featherless.ai/) (OpenAI-compatible endpoint)
-- **Model:** `google/gemma-3-27b-it` (vision-capable)
+- **AI Vision Engine:** [OpenCode AI Zen Gateway](https://opencode.ai/zen/v1) (OpenAI-compatible)
+- **Supported Free Models:**
+  - `hy3-free` (Default Recommended)
+  - `mimo-v2.5-free`
+  - `muse-spark-1.2-contributor-free` / `muse-spark-1.2`
+  - `nemotron-3-ultra-free` / `nemotron-3.5-lightning-free`
+  - `deepseek-v4-flash-free`
+  - `big-pickle`
 - **Audio:** Web Speech API (`SpeechSynthesis`) & Web Audio API (`AudioContext`)
 - **Icons:** Lucide React
 
@@ -48,7 +55,7 @@ EchoGraph allows Amara to snap a photo, drag a screenshot, or paste directly fro
 
 In accordance with hackathon submission guidelines, the following AI tools and models were used in this project:
 
-1. **Featherless AI (`google/gemma-3-27b-it`):**
+1. **OpenCode AI Zen (`hy3-free` / `mimo-v2.5-free` / `nemotron-3-ultra-free` / `muse-spark-1.2`):**
    - **Pass 1:** Visual feature extraction, diagram decomposition, and structured scientific accessibility description generation.
    - **Pass 2:** Automated self-verification audit against the source image to detect misidentified axes, hallucinations, or scale uncertainties.
 2. **Google Antigravity (Advanced Agentic Assistant):**
@@ -57,10 +64,6 @@ In accordance with hackathon submission guidelines, the following AI tools and m
 ---
 
 ## 🚀 Quickstart & Setup
-
-### Prerequisites
-- Node.js (v18+)
-- npm or pnpm
 
 ### Installation
 
@@ -72,35 +75,19 @@ cd echograph
 # Install dependencies
 npm install
 
-# (Optional) Set your Featherless API key in .env
-# Note: You can also use the gear icon in the app UI to set a session key,
-# or test using the bundled sample datasets.
-cp .env.example .env
-```
-
-### Configure `.env`
-```env
-VITE_FEATHERLESS_API_KEY=your_featherless_api_key_here
-```
-
-### Run Locally
-```bash
+# Run locally
 npm run dev
 ```
 Open `http://localhost:3000` in your browser.
 
-### Production Build
-```bash
-npm run build
-npm run preview
+### Custom Keys & Configuration
+You can customize your API key, base URL, and active model either in the `.env` file or directly inside the app using the **gear icon (Settings)** in the footer.
+
+```env
+VITE_OPENCODE_API_KEY=sk-...
+VITE_OPENCODE_BASE_URL=https://opencode.ai/zen/v1
+VITE_DEFAULT_MODEL=hy3-free
 ```
-
----
-
-## 🔒 Security & Hackathon Architecture Notes
-
-- **Client-Side API Calls:** For hackathon judging and zero-setup evaluation, the Featherless API is accessed directly from the client using `dangerouslyAllowBrowser: true`.
-- **Production Architecture:** In a production deployment, requests should be proxied through a lightweight edge function (Cloudflare Workers, Next.js API Route, or Express) to securely manage API tokens and enforce per-user rate limits.
 
 ---
 
