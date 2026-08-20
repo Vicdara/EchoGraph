@@ -64,6 +64,7 @@ export const App: React.FC = () => {
         verification: result.verification,
         extractedValues: sampleData?.precomputedValues || result.extractedValues,
         modelUsed: result.modelUsed,
+        providerUsed: result.providerUsed,
       };
 
       setCurrentRecord(newRecord);

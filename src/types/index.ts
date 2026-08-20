@@ -22,6 +22,7 @@ export interface AnalysisRecord {
   verification: VerificationResult;
   extractedValues?: number[]; // For sonification audio tones
   modelUsed?: string;
+  providerUsed?: string;
 }
 
 export interface SampleGraph {
