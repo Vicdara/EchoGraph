@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { UploadCloud, Image as ImageIcon, Settings, AlertCircle, Loader2, Sparkles, X, FileQuestion } from 'lucide-react';
 import { SAMPLE_GRAPHS } from '../data/sampleGraphs';
 import { SampleGraph } from '../types';
+import { optimizeImageForVision } from '../utils/imageOptimizer';
 
 interface UploadScreenProps {
   onAnalyze: (imageDataUrl: string, fileName: string, sampleData?: SampleGraph) => void;
@@ -31,7 +32,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
 
   // Global clipboard paste listener
   useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
+    const handlePaste = async (e: ClipboardEvent) => {
       if (isLoading) return;
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -40,7 +41,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
         if (items[i].type.indexOf('image') !== -1) {
           const file = items[i].getAsFile();
           if (file) {
-            processFile(file, `clipboard-image-${Date.now()}.${file.type.split('/')[1] || 'png'}`);
+            await processFile(file, `clipboard-image-${Date.now()}.${file.type.split('/')[1] || 'png'}`);
             setPasteNotice('Image pasted from clipboard!');
             setTimeout(() => setPasteNotice(null), 3000);
           }
@@ -53,24 +54,21 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
     return () => window.removeEventListener('paste', handlePaste);
   }, [isLoading]);
 
-  const processFile = (file: File, customName?: string) => {
-    // Check file size (max 20MB)
-    if (file.size > 20 * 1024 * 1024) {
-      alert('Image size exceeds 20MB limit. Please choose a smaller image.');
+  const processFile = async (file: File, customName?: string) => {
+    if (file.size > 25 * 1024 * 1024) {
+      alert('Image size exceeds 25MB limit. Please choose a smaller image.');
       return;
     }
 
     const name = customName || file.name;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setSelectedImage(dataUrl);
-        setFileName(name);
-        setSelectedSample(null);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const optimizedDataUrl = await optimizeImageForVision(file);
+      setSelectedImage(optimizedDataUrl);
+      setFileName(name);
+      setSelectedSample(null);
+    } catch (e) {
+      console.error('Error processing image:', e);
+    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
