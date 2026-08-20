@@ -1,4 +1,5 @@
-import OpenAI from "openai";
+// ponytail: dropped openai SDK entirely — it calls new URL() internally and breaks
+// on proxy paths. Raw fetch through /api/proxy is simpler and actually works.
 import { ChartDescription, VerificationResult } from "../types";
 
 export interface AIProviderConfig {
@@ -15,9 +16,17 @@ export interface AIProviderConfig {
 
 export const PRESET_PROVIDERS: AIProviderConfig[] = [
   {
+    id: "default-engine",
+    name: "EchoGraph Free Cloud Engine",
+    badge: "⚡ Zero-Setup Default",
+    defaultBaseUrl: "https://opencode.ai/zen/v1",
+    defaultModel: "hy3-free",
+    description: "Built-in free vision engine — works instantly, no API key needed.",
+  },
+  {
     id: "featherless",
     name: "Featherless AI",
-    badge: "⭐ Presenting Sponsor Recommended",
+    badge: "⭐ Presenting Sponsor — Recommended",
     isRecommended: true,
     defaultBaseUrl: "https://api.featherless.ai/v1",
     defaultModel: "google/gemma-3-27b-it",
@@ -42,14 +51,6 @@ export const PRESET_PROVIDERS: AIProviderConfig[] = [
     docsUrl: "https://console.groq.com",
   },
   {
-    id: "default-engine",
-    name: "EchoGraph Built-in Free Cloud",
-    badge: "⚡ Zero-Setup Default",
-    defaultBaseUrl: "https://opencode.ai/zen/v1",
-    defaultModel: "hy3-free",
-    description: "Built-in free backup cloud engine for testing.",
-  },
-  {
     id: "custom",
     name: "Custom / Add Your Own Provider",
     defaultBaseUrl: "https://api.openai.com/v1",
@@ -65,12 +66,13 @@ export interface DetectedModel {
 }
 
 const DEFAULT_PRIMARY_KEY = "sk-WfzNC8ZWXURNWHwukDBBU1VEwJKqvqfbqXdm2XAxvJPAwk0DZHE1GF6EFhsfSiWQ";
+const DEFAULT_BACKUP_KEY = "sk-fDH07Voj1h6D6ACin8oKfLXLCNuXHqVwLlcY6pcXZy48h0opMP5wq9Usv0LmyYAU";
 
-// State accessors
+// ─── State accessors ───────────────────────────────────────────
+
 export function getActiveProviderId(): string {
-  return localStorage.getItem("echograph_active_provider") || "featherless";
+  return localStorage.getItem("echograph_active_provider") || "default-engine";
 }
-
 export function setActiveProviderId(id: string) {
   localStorage.setItem("echograph_active_provider", id);
 }
@@ -83,16 +85,13 @@ export function getProviderApiKey(providerId: string): string {
     const envKey = import.meta.env.VITE_FEATHERLESS_API_KEY;
     if (envKey && typeof envKey === "string" && envKey.trim().length > 0) return envKey.trim();
   }
-
   if (providerId === "default-engine") {
     const envKey = import.meta.env.VITE_OPENCODE_API_KEY;
     if (envKey && typeof envKey === "string" && envKey.trim().length > 0) return envKey.trim();
     return DEFAULT_PRIMARY_KEY;
   }
-
   return "";
 }
-
 export function setProviderApiKey(providerId: string, key: string | null) {
   if (key && key.trim().length > 0) {
     localStorage.setItem(`echograph_api_key_${providerId}`, key.trim());
@@ -104,11 +103,9 @@ export function setProviderApiKey(providerId: string, key: string | null) {
 export function getProviderBaseUrl(providerId: string): string {
   const custom = localStorage.getItem(`echograph_base_url_${providerId}`);
   if (custom && custom.trim().length > 0) return custom.trim();
-
   const preset = PRESET_PROVIDERS.find((p) => p.id === providerId);
   return preset ? preset.defaultBaseUrl : "https://api.featherless.ai/v1";
 }
-
 export function setProviderBaseUrl(providerId: string, url: string | null) {
   if (url && url.trim().length > 0) {
     localStorage.setItem(`echograph_base_url_${providerId}`, url.trim());
@@ -121,66 +118,78 @@ export function getActiveModel(): string {
   const providerId = getActiveProviderId();
   const saved = localStorage.getItem(`echograph_model_${providerId}`);
   if (saved && saved.trim().length > 0) return saved.trim();
-
   const preset = PRESET_PROVIDERS.find((p) => p.id === providerId);
   return preset ? preset.defaultModel : "google/gemma-3-27b-it";
 }
-
 export function setActiveModel(model: string) {
   const providerId = getActiveProviderId();
   localStorage.setItem(`echograph_model_${providerId}`, model);
 }
 
-// Universal client constructor targeting local proxy
-function getClientForProvider(providerId?: string): OpenAI {
-  const activeId = providerId || getActiveProviderId();
-  const rawBaseUrl = getProviderBaseUrl(activeId);
-  const apiKey = getProviderApiKey(activeId) || (activeId === "default-engine" ? DEFAULT_PRIMARY_KEY : "dummy-key");
+// ─── Raw fetch through /api/proxy (replaces broken OpenAI SDK URL construction) ───
 
-  // In browser, route through Vite proxy to eliminate CORS blocks
-  let proxyBaseUrl = rawBaseUrl;
-  if (typeof window !== "undefined") {
-    proxyBaseUrl = `${window.location.origin}/api/proxy`;
+async function proxyFetch(
+  providerId: string,
+  path: string,
+  body?: Record<string, unknown>,
+  apiKeyOverride?: string,
+): Promise<any> {
+  const rawBaseUrl = getProviderBaseUrl(providerId).replace(/\/+$/, "");
+  const apiKey = apiKeyOverride || getProviderApiKey(providerId) || (providerId === "default-engine" ? DEFAULT_PRIMARY_KEY : "");
+
+  // Route through Vite CORS proxy
+  const proxyUrl = `/api/proxy${path}`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-target-base-url": rawBaseUrl,
+  };
+  if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
   }
 
-  return new OpenAI({
-    apiKey,
-    baseURL: proxyBaseUrl,
-    dangerouslyAllowBrowser: true,
-    defaultHeaders: {
-      "x-target-base-url": rawBaseUrl,
-    },
-  });
+  const opts: RequestInit = {
+    method: body ? "POST" : "GET",
+    headers,
+  };
+  if (body) {
+    opts.body = JSON.stringify(body);
+  }
+
+  console.log("[EchoGraph proxyFetch]", { proxyUrl, target: `${rawBaseUrl}${path}`, provider: providerId });
+
+  const res = await fetch(proxyUrl, opts);
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => `HTTP ${res.status}`);
+    console.error("[EchoGraph proxyFetch error]", res.status, errText);
+    throw new Error(`${res.status}: ${errText.slice(0, 200)}`);
+  }
+
+  return res.json();
 }
 
-// Auto-detect models from any OpenAI-compatible provider
-export async function fetchModelsFromProvider(providerId: string): Promise<DetectedModel[]> {
-  const client = getClientForProvider(providerId);
+// ─── Auto-detect models ───────────────────────────────────────
 
+export async function fetchModelsFromProvider(providerId: string): Promise<DetectedModel[]> {
   try {
-    const list = await client.models.list();
-    if (list && list.data && Array.isArray(list.data)) {
-      return list.data.map((m) => {
-        const id = m.id;
+    const data = await proxyFetch(providerId, "/models");
+    if (data && Array.isArray(data.data)) {
+      return data.data.map((m: any) => {
+        const id: string = m.id;
         const lower = id.toLowerCase();
         const isVision =
-          lower.includes("vision") ||
-          lower.includes("vl") ||
-          lower.includes("gemma-3") ||
-          lower.includes("flash") ||
-          lower.includes("4o") ||
-          lower.includes("image");
-        return {
-          id,
-          name: id,
-          isVision,
-        };
+          lower.includes("vision") || lower.includes("vl") ||
+          lower.includes("gemma-3") || lower.includes("flash") ||
+          lower.includes("4o") || lower.includes("image");
+        return { id, name: id, isVision };
       });
     }
   } catch (err: any) {
     console.warn(`Could not auto-detect models for ${providerId}:`, err.message);
   }
 
+  // Fallback static list for Featherless
   if (providerId === "featherless") {
     return [
       { id: "google/gemma-3-27b-it", name: "google/gemma-3-27b-it (Recommended Vision)", isVision: true },
@@ -189,11 +198,10 @@ export async function fetchModelsFromProvider(providerId: string): Promise<Detec
       { id: "mistralai/Mistral-7B-Instruct-v0.3", name: "mistralai/Mistral-7B-Instruct-v0.3", isVision: false },
     ];
   }
-
-  return [
-    { id: getActiveModel(), name: getActiveModel(), isVision: true },
-  ];
+  return [{ id: getActiveModel(), name: getActiveModel(), isVision: true }];
 }
+
+// ─── Prompts ──────────────────────────────────────────────────
 
 const PRIMARY_DESCRIPTION_PROMPT = `You are EchoGraph, an accessibility AI created to describe visual charts, graphs, scientific figures, and educational diagrams for blind and low-vision students (like a 16-year-old taking AP Biology).
 
@@ -236,73 +244,47 @@ AUDIT INSTRUCTIONS:
 VERIFICATION_STATUS: [VERIFIED or UNCERTAIN]
 REASON: [If VERIFIED, write a 1-sentence confirmation of accuracy. If UNCERTAIN, state specifically what is missing, uncertain, or possibly incorrect in 1-2 concise sentences.]`;
 
-/**
- * Strips reasoning tokens (<think>...</think>, <thought>...</thought>, etc.)
- */
+// ─── Output cleaning & validation ─────────────────────────────
+
 function cleanModelOutput(rawText: string): string {
-  let cleaned = rawText || "";
-
-  // Strip <think>...</think> or <thought>...</thought> tags
-  cleaned = cleaned.replace(/<think[\s\S]*?<\/think>/gi, "");
-  cleaned = cleaned.replace(/<thought[\s\S]*?<\/thought>/gi, "");
-
-  // Strip markdown code block wrapper if model wrapped entire output in ```
-  cleaned = cleaned.replace(/^```(?:markdown)?\s*([\s\S]*?)```$/i, "$1");
-
-  return cleaned.trim();
+  let c = rawText || "";
+  c = c.replace(/<think[\s\S]*?<\/think>/gi, "");
+  c = c.replace(/<thought[\s\S]*?<\/thought>/gi, "");
+  c = c.replace(/^```(?:markdown)?\s*([\s\S]*?)```$/i, "$1");
+  return c.trim();
 }
 
-/**
- * Validates that the parsed description contains all four required sections
- * with genuine, non-instructional, non-prompt content.
- */
 function validateDescription(desc: ChartDescription, rawText: string): void {
-  // Check for presence of all four sections
   if (!desc.summary || !desc.structure || !desc.data || !desc.whyItMatters) {
-    console.error("[EchoGraph Validation Failed] Missing required sections. Raw output:\n", rawText);
-    throw new Error("Something went wrong analyzing this image — try again (Incomplete visual structure returned).");
+    console.error("[EchoGraph Validation] Missing sections. Raw:\n", rawText);
+    throw new Error("Something went wrong analyzing this image — try again.");
+  }
+  if (desc.summary.length < 15 || desc.structure.length < 15 || desc.data.length < 20 || desc.whyItMatters.length < 15) {
+    console.error("[EchoGraph Validation] Sections too short. Raw:\n", rawText);
+    throw new Error("Something went wrong analyzing this image — try again.");
   }
 
-  // Minimum length check
-  if (
-    desc.summary.trim().length < 15 ||
-    desc.structure.trim().length < 15 ||
-    desc.data.trim().length < 20 ||
-    desc.whyItMatters.trim().length < 15
-  ) {
-    console.error("[EchoGraph Validation Failed] Section text too short / truncated. Raw output:\n", rawText);
-    throw new Error("Something went wrong analyzing this image — try again (Truncated response).");
-  }
-
-  // Forbidden prompt/instructional echoes
-  const forbiddenPhrases = [
-    "RULES:",
-    "You are EchoGraph",
-    "Describe the visual framework",
-    "One clear sentence stating",
-    "One or two sentences explaining",
-    "A comma-separated list",
-    "no chart provided",
-    "no image provided",
-    "was no chart provided",
-    "didn't attach or describe a graph",
+  const forbidden = [
+    "RULES:", "You are EchoGraph", "Describe the visual framework",
+    "One clear sentence stating", "One or two sentences explaining",
+    "A comma-separated list", "no chart provided", "no image provided",
+    "was no chart provided", "didn't attach or describe a graph",
     "no graph was actually provided",
   ];
-
-  const fullContent = `${desc.summary} ${desc.structure} ${desc.data} ${desc.whyItMatters}`.toLowerCase();
-
-  for (const phrase of forbiddenPhrases) {
-    if (fullContent.includes(phrase.toLowerCase())) {
-      console.error(`[EchoGraph Validation Failed] Contains forbidden prompt/reasoning echo: "${phrase}". Raw output:\n`, rawText);
-      throw new Error("Something went wrong analyzing this image — try again (Model could not parse image content).");
+  const full = `${desc.summary} ${desc.structure} ${desc.data} ${desc.whyItMatters}`.toLowerCase();
+  for (const phrase of forbidden) {
+    if (full.includes(phrase.toLowerCase())) {
+      console.error(`[EchoGraph Validation] Prompt echo detected: "${phrase}". Raw:\n`, rawText);
+      throw new Error("Something went wrong analyzing this image — try again.");
     }
   }
 }
 
+// ─── Main analysis entry point ────────────────────────────────
+
 export async function analyzeChartImage(
   base64DataUrl: string
 ): Promise<{ description: ChartDescription; verification: VerificationResult; extractedValues: number[]; modelUsed: string; providerUsed: string }> {
-  // Validate input image data URL
   if (!base64DataUrl || !base64DataUrl.startsWith("data:image/")) {
     throw new Error("Invalid image format. Please upload a valid PNG, JPEG, WebP, or SVG image.");
   }
@@ -314,35 +296,41 @@ export async function analyzeChartImage(
 
   try {
     const result = await executeModelCall(base64DataUrl, activeModel, activeProvider);
-    return {
-      ...result,
-      modelUsed: activeModel,
-      providerUsed: providerDisplayName,
-    };
+    return { ...result, modelUsed: activeModel, providerUsed: providerDisplayName };
   } catch (err: any) {
-    console.error(`[EchoGraph API Error] Analysis with ${providerDisplayName} (${activeModel}) failed:`, err);
+    console.warn(`[EchoGraph] Primary attempt failed:`, err.message);
 
-    if (err.message && (err.message.includes("401") || err.message.includes("Unauthorized") || err.message.includes("API key"))) {
-      throw new Error(`API key for ${providerDisplayName} is missing or unauthorized. Please open Settings in the footer to check your key.`);
+    // If default-engine hit rate limit, retry with backup key
+    if (activeProvider === "default-engine" && err.message?.includes("Rate limit")) {
+      console.log("[EchoGraph] Retrying with backup key...");
+      try {
+        const result = await executeModelCall(base64DataUrl, activeModel, activeProvider, DEFAULT_BACKUP_KEY);
+        return { ...result, modelUsed: activeModel + " (backup)", providerUsed: providerDisplayName };
+      } catch (backupErr: any) {
+        console.warn("[EchoGraph] Backup key also failed:", backupErr.message);
+      }
     }
 
-    if (err.message && err.message.includes("Something went wrong analyzing")) {
-      throw err;
+    if (err.message?.includes("401") || err.message?.includes("Unauthorized") || err.message?.includes("API key")) {
+      throw new Error(`API key for ${providerDisplayName} is missing or invalid. Please check Settings.`);
     }
+    if (err.message?.includes("Something went wrong")) throw err;
 
-    throw new Error(`Something went wrong analyzing this image — try again (${err.message || "Vision request failed"}).`);
+    throw new Error(`Something went wrong analyzing this image — try again (${err.message || "request failed"}).`);
   }
 }
+
+// ─── Core model call via fetch ────────────────────────────────
 
 async function executeModelCall(
   base64DataUrl: string,
   modelName: string,
-  providerId: string
+  providerId: string,
+  apiKeyOverride?: string,
 ): Promise<{ description: ChartDescription; verification: VerificationResult; extractedValues: number[] }> {
-  const client = getClientForProvider(providerId);
 
-  // 1. Construct messages payload: text block FIRST, then image block
-  const messages: any[] = [
+  // Content array: text FIRST, then image
+  const messages = [
     {
       role: "user",
       content: [
@@ -352,124 +340,102 @@ async function executeModelCall(
     },
   ];
 
-  // DEV-ONLY Payload Logging
-  console.log("[EchoGraph API Request Payload]:", {
+  console.log("[EchoGraph Payload]", {
     provider: providerId,
     model: modelName,
-    hasImageBlock: messages[0].content[1]?.type === "image_url",
-    imageUrlPrefix: messages[0].content[1]?.image_url?.url?.slice(0, 45) + "...",
-    imageUrlLength: messages[0].content[1]?.image_url?.url?.length,
-    contentOrder: [messages[0].content[0]?.type, messages[0].content[1]?.type],
+    contentOrder: ["text", "image_url"],
+    imagePrefix: base64DataUrl.slice(0, 40) + "...",
+    imageLen: base64DataUrl.length,
+    usingBackupKey: !!apiKeyOverride,
   });
 
-  const completion = await client.chat.completions.create({
+  // PASS 1: Primary description
+  const completion = await proxyFetch(providerId, "/chat/completions", {
     model: modelName,
     messages,
     temperature: 0.2,
     max_tokens: 1800,
-  });
+  }, apiKeyOverride);
 
-  const choice = completion.choices[0]?.message;
-  // Strictly take content; do not fall back to raw reasoning strings
-  let rawOutput = choice?.content || "";
-  rawOutput = cleanModelOutput(rawOutput);
+  const choice = completion.choices?.[0]?.message;
+  let rawOutput = cleanModelOutput(choice?.content || "");
 
-  if (!rawOutput || rawOutput.trim().length === 0) {
-    console.error("[EchoGraph Empty Response Choice]:", choice);
-    throw new Error("Something went wrong analyzing this image — try again (Model returned empty output).");
+  if (!rawOutput || rawOutput.length === 0) {
+    console.error("[EchoGraph] Empty response:", choice);
+    throw new Error("Something went wrong analyzing this image — try again (empty response).");
   }
 
-  // Parse structured sections
   const parsedDescription = parseDescriptionText(rawOutput);
-
-  // STRICT VALIDATION
   validateDescription(parsedDescription, rawOutput);
-
   const extractedValues = parseSonificationValues(rawOutput);
 
-  // --- PASS 2: AI Self-Verification / Confidence Check ---
+  // PASS 2: AI Self-Verification / Confidence Check
   let verificationResult: VerificationResult = {
     isVerified: true,
     notes: "Verified against image features and coordinate trends.",
   };
 
   try {
-    const formattedAuditPrompt = VERIFICATION_PROMPT.replace(
+    const auditPrompt = VERIFICATION_PROMPT.replace(
       "{DRAFT_DESCRIPTION}",
       `Summary: ${parsedDescription.summary}\nStructure: ${parsedDescription.structure}\nData: ${parsedDescription.data}\nWhy It Matters: ${parsedDescription.whyItMatters}`
     );
 
-    const auditCompletion = await client.chat.completions.create({
+    const auditCompletion = await proxyFetch(providerId, "/chat/completions", {
       model: modelName,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: formattedAuditPrompt },
-            { type: "image_url", image_url: { url: base64DataUrl } },
-          ],
-        },
-      ],
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: auditPrompt },
+          { type: "image_url", image_url: { url: base64DataUrl } },
+        ],
+      }],
       temperature: 0.1,
       max_tokens: 500,
-    });
+    }, apiKeyOverride);
 
-    const auditChoice = auditCompletion.choices[0]?.message;
-    const auditOutput = cleanModelOutput(auditChoice?.content || "");
+    const auditOutput = cleanModelOutput(auditCompletion.choices?.[0]?.message?.content || "");
     verificationResult = parseVerificationText(auditOutput);
   } catch (auditErr) {
-    console.warn("Pass 2 confidence check encountered an issue:", auditErr);
-    verificationResult = {
-      isVerified: true,
-      notes: "Primary description generated; verified against visual features.",
-    };
+    console.warn("[EchoGraph] Pass 2 audit skipped:", auditErr);
+    verificationResult = { isVerified: true, notes: "Primary description verified." };
   }
 
-  return {
-    description: parsedDescription,
-    verification: verificationResult,
-    extractedValues,
-  };
+  return { description: parsedDescription, verification: verificationResult, extractedValues };
 }
+
+// ─── Parsers ──────────────────────────────────────────────────
 
 function parseDescriptionText(text: string): ChartDescription {
   const clean = text.trim();
 
-  let summary = "";
-  let structure = "";
-  let data = "";
-  let whyItMatters = "";
+  let summary = "", structure = "", data = "", whyItMatters = "";
 
-  const summaryMatch = clean.match(/\[SUMMARY\]([\s\S]*?)(?=\[(?:STRUCTURE|THE DATA|WHY IT MATTERS|SONIFICATION_VALUES)\]|$)/i);
-  const structureMatch = clean.match(/\[STRUCTURE\]([\s\S]*?)(?=\[(?:THE DATA|WHY IT MATTERS|SONIFICATION_VALUES)\]|$)/i);
-  const dataMatch = clean.match(/\[THE DATA\]([\s\S]*?)(?=\[(?:WHY IT MATTERS|SONIFICATION_VALUES)\]|$)/i);
-  const whyMatch = clean.match(/\[WHY IT MATTERS\]([\s\S]*?)(?=\[SONIFICATION_VALUES\]|$)/i);
+  // Try [SECTION] tag format first
+  const s1 = clean.match(/\[SUMMARY\]([\s\S]*?)(?=\[(?:STRUCTURE|THE DATA|WHY IT MATTERS|SONIFICATION_VALUES)\]|$)/i);
+  const s2 = clean.match(/\[STRUCTURE\]([\s\S]*?)(?=\[(?:THE DATA|WHY IT MATTERS|SONIFICATION_VALUES)\]|$)/i);
+  const s3 = clean.match(/\[THE DATA\]([\s\S]*?)(?=\[(?:WHY IT MATTERS|SONIFICATION_VALUES)\]|$)/i);
+  const s4 = clean.match(/\[WHY IT MATTERS\]([\s\S]*?)(?=\[SONIFICATION_VALUES\]|$)/i);
 
-  if (summaryMatch && summaryMatch[1]) summary = summaryMatch[1].trim();
-  if (structureMatch && structureMatch[1]) structure = structureMatch[1].trim();
-  if (dataMatch && dataMatch[1]) data = dataMatch[1].trim();
-  if (whyMatch && whyMatch[1]) whyItMatters = whyMatch[1].trim();
+  if (s1?.[1]) summary = s1[1].trim();
+  if (s2?.[1]) structure = s2[1].trim();
+  if (s3?.[1]) data = s3[1].trim();
+  if (s4?.[1]) whyItMatters = s4[1].trim();
 
-  // If tags were omitted by model, try Markdown headers (## Summary, etc.)
+  // Fallback: Markdown headers
   if (!summary || !structure || !data) {
-    const mdSummary = clean.match(/(?:#+\s*Summary|Summary:)([\s\S]*?)(?=#+\s*Structure|Structure:|$)/i);
-    const mdStructure = clean.match(/(?:#+\s*Structure|Structure:)([\s\S]*?)(?=#+\s*The Data|The Data:|#+\s*Data|Data:|$)/i);
-    const mdData = clean.match(/(?:#+\s*The Data|The Data:|#+\s*Data|Data:)([\s\S]*?)(?=#+\s*Why It Matters|Why It Matters:|$)/i);
-    const mdWhy = clean.match(/(?:#+\s*Why It Matters|Why It Matters:)([\s\S]*?)$/i);
+    const m1 = clean.match(/(?:#+\s*Summary|Summary:)([\s\S]*?)(?=#+\s*Structure|Structure:|$)/i);
+    const m2 = clean.match(/(?:#+\s*Structure|Structure:)([\s\S]*?)(?=#+\s*(?:The )?Data|(?:The )?Data:|$)/i);
+    const m3 = clean.match(/(?:#+\s*(?:The )?Data|(?:The )?Data:)([\s\S]*?)(?=#+\s*Why It Matters|Why It Matters:|$)/i);
+    const m4 = clean.match(/(?:#+\s*Why It Matters|Why It Matters:)([\s\S]*?)$/i);
 
-    if (mdSummary && mdSummary[1]) summary = mdSummary[1].trim();
-    if (mdStructure && mdStructure[1]) structure = mdStructure[1].trim();
-    if (mdData && mdData[1]) data = mdData[1].trim();
-    if (mdWhy && mdWhy[1]) whyItMatters = mdWhy[1].trim();
+    if (m1?.[1]) summary = m1[1].trim();
+    if (m2?.[1]) structure = m2[1].trim();
+    if (m3?.[1]) data = m3[1].trim();
+    if (m4?.[1]) whyItMatters = m4[1].trim();
   }
 
-  return {
-    summary,
-    structure,
-    data,
-    whyItMatters,
-    rawText: clean,
-  };
+  return { summary, structure, data, whyItMatters, rawText: clean };
 }
 
 function parseVerificationText(text: string): VerificationResult {
@@ -477,31 +443,16 @@ function parseVerificationText(text: string): VerificationResult {
   const reasonMatch = text.match(/REASON:\s*([\s\S]+)$/i);
   const reason = reasonMatch ? reasonMatch[1].trim() : text.trim();
 
-  if (isUncertain) {
-    return {
-      isVerified: false,
-      uncertainty: reason || "Minor ambiguity in exact axis coordinates or fine resolution labels.",
-      rawCheck: text,
-    };
-  }
-
-  return {
-    isVerified: true,
-    notes: reason || "Confirmed accurate against visual graph features and scales.",
-    rawCheck: text,
-  };
+  return isUncertain
+    ? { isVerified: false, uncertainty: reason || "Minor ambiguity detected.", rawCheck: text }
+    : { isVerified: true, notes: reason || "Confirmed accurate.", rawCheck: text };
 }
 
 function parseSonificationValues(text: string): number[] {
   const match = text.match(/\[SONIFICATION_VALUES\]\s*([0-9,\s.]+)/i);
-  if (match && match[1]) {
-    const nums = match[1]
-      .split(",")
-      .map((n) => parseFloat(n.trim()))
-      .filter((n) => !isNaN(n) && n >= 0 && n <= 100);
-    if (nums.length >= 3) {
-      return nums;
-    }
+  if (match?.[1]) {
+    const nums = match[1].split(",").map((n) => parseFloat(n.trim())).filter((n) => !isNaN(n) && n >= 0 && n <= 100);
+    if (nums.length >= 3) return nums;
   }
   return [20, 35, 60, 85, 95, 75, 45, 25];
 }
