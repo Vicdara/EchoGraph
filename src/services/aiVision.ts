@@ -282,11 +282,45 @@ function validateDescription(desc: ChartDescription, rawText: string): void {
 
 // ─── Main analysis entry point ────────────────────────────────
 
+async function executeWithRetry<T>(
+  fn: () => Promise<T>,
+  onRetry?: (attempt: number) => void,
+  maxRetries = 2
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const is5xxOrNetwork =
+        err.message?.includes("502") ||
+        err.message?.includes("503") ||
+        err.message?.includes("504") ||
+        err.message?.includes("ECONNRESET") ||
+        err.message?.includes("fetch failed") ||
+        err.message?.includes("Failed to fetch");
+
+      if (!is5xxOrNetwork || attempt >= maxRetries) {
+        throw err;
+      }
+
+      attempt++;
+      console.warn(`[EchoGraph] Transient network error, retrying (Attempt ${attempt}/${maxRetries}):`, err.message);
+      if (onRetry) onRetry(attempt);
+      
+      const delay = attempt === 1 ? 1500 : 3000;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 export async function analyzeChartImage(
-  base64DataUrl: string
+  base64DataUrl: string,
+  onRetry?: (attempt: number) => void
 ): Promise<{ description: ChartDescription; verification: VerificationResult; extractedValues: number[]; modelUsed: string; providerUsed: string }> {
-  if (!base64DataUrl || !base64DataUrl.startsWith("data:image/")) {
-    throw new Error("Invalid image format. Please upload a valid PNG, JPEG, WebP, or SVG image.");
+  if (!base64DataUrl || !base64DataUrl.startsWith("data:image/") || base64DataUrl.length < 100) {
+    console.warn("[EchoGraph] Aborting request: Image base64 string is empty or invalid.", { length: base64DataUrl?.length });
+    throw new Error("No image detected — try uploading again");
   }
 
   const activeProvider = getActiveProviderId();
@@ -299,7 +333,7 @@ export async function analyzeChartImage(
 
   if (hasKey) {
     try {
-      const result = await executeModelCall(base64DataUrl, activeModel, activeProvider);
+      const result = await executeWithRetry(() => executeModelCall(base64DataUrl, activeModel, activeProvider), onRetry);
       return { ...result, modelUsed: activeModel, providerUsed: providerDisplayName };
     } catch (err: any) {
       console.warn(`[EchoGraph] ${providerDisplayName} failed:`, err.message);
@@ -307,7 +341,7 @@ export async function analyzeChartImage(
       if (activeProvider === "default-engine") {
         // Try backup key
         try {
-          const result = await executeModelCall(base64DataUrl, activeModel, activeProvider, DEFAULT_BACKUP_KEY);
+          const result = await executeWithRetry(() => executeModelCall(base64DataUrl, activeModel, activeProvider, DEFAULT_BACKUP_KEY), onRetry);
           return { ...result, modelUsed: activeModel + " (backup)", providerUsed: providerDisplayName };
         } catch (backupErr: any) {
           console.warn("[EchoGraph] Backup key also failed:", backupErr.message);
@@ -322,12 +356,12 @@ export async function analyzeChartImage(
   console.log("[EchoGraph] Falling back to built-in free cloud engine...");
   const fallbackModel = "hy3-free";
   try {
-    const result = await executeModelCall(base64DataUrl, fallbackModel, "default-engine");
+    const result = await executeWithRetry(() => executeModelCall(base64DataUrl, fallbackModel, "default-engine"), onRetry);
     return { ...result, modelUsed: fallbackModel, providerUsed: "EchoGraph Free Cloud Engine" };
   } catch (err2: any) {
     // Try backup key
     try {
-      const result = await executeModelCall(base64DataUrl, fallbackModel, "default-engine", DEFAULT_BACKUP_KEY);
+      const result = await executeWithRetry(() => executeModelCall(base64DataUrl, fallbackModel, "default-engine", DEFAULT_BACKUP_KEY), onRetry);
       return { ...result, modelUsed: fallbackModel + " (backup)", providerUsed: "EchoGraph Free Cloud Engine" };
     } catch (err3: any) {
       throw new Error(`Something went wrong analyzing this image — try again (${err3.message || "request failed"}).`);

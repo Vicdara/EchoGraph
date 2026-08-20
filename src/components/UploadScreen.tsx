@@ -104,10 +104,17 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
     }
   }, []);
 
-  const handleSelectSample = (sample: SampleGraph) => {
-    setSelectedImage(sample.imageUrl);
-    setFileName(sample.title);
-    setSelectedSample(sample);
+  const handleSelectSample = async (sample: SampleGraph) => {
+    try {
+      // For sample graphs, we pass the relative URL to the optimizer,
+      // which loads it into a canvas and returns a base64 data URL.
+      const optimizedDataUrl = await optimizeImageForVision(sample.imageUrl);
+      setSelectedImage(optimizedDataUrl);
+      setFileName(sample.title);
+      setSelectedSample(sample);
+    } catch (e) {
+      console.error('Error processing sample image:', e);
+    }
   };
 
   const handleClearSelected = () => {

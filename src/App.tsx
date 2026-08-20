@@ -46,7 +46,9 @@ export const App: React.FC = () => {
 
     try {
       // Multi-pass visual perception execution
-      const analysisPromise = analyzeChartImage(imageDataUrl);
+      const analysisPromise = analyzeChartImage(imageDataUrl, (attempt) => {
+        setLoadingStep(`Having trouble reaching the AI — retrying... (Attempt ${attempt})`);
+      });
       
       const stepTimer = setTimeout(() => {
         setLoadingStep('Pass 2/2: Auditing description for accuracy...');

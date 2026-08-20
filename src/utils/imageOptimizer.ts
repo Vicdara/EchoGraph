@@ -1,10 +1,22 @@
 /**
  * Optimizes, resizes, and converts any uploaded image (PNG, HEIC, JPG, WebP)
- * to a lightweight, crisp JPEG/PNG data URL (max 1280px dimension).
+ * to a lightweight, crisp JPEG/PNG data URL (max 1600px dimension).
  * This eliminates payload timeouts, connection errors, and 413 limits on AI vision APIs.
  */
-export async function optimizeImageForVision(fileOrDataUrl: File | string, maxDimension = 1200, quality = 0.85): Promise<string> {
-  return new Promise((resolve, reject) => {
+export async function optimizeImageForVision(fileOrDataUrl: File | string, maxDimension = 1600, quality = 0.8): Promise<string> {
+  let base64Src = "";
+  if (typeof fileOrDataUrl === "string") {
+    base64Src = fileOrDataUrl;
+  } else {
+    base64Src = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(fileOrDataUrl);
+    });
+  }
+
+  return new Promise((resolve) => {
     const img = new Image();
 
     img.onload = () => {
@@ -26,7 +38,7 @@ export async function optimizeImageForVision(fileOrDataUrl: File | string, maxDi
 
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        resolve(typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '');
+        resolve(base64Src);
         return;
       }
 
@@ -41,25 +53,9 @@ export async function optimizeImageForVision(fileOrDataUrl: File | string, maxDi
 
     img.onerror = (e) => {
       console.warn('Image optimization error, falling back to original:', e);
-      if (typeof fileOrDataUrl === 'string') {
-        resolve(fileOrDataUrl);
-      } else {
-        const reader = new FileReader();
-        reader.onload = (ev) => resolve(ev.target?.result as string);
-        reader.onerror = () => reject(new Error('Could not read image file.'));
-        reader.readAsDataURL(fileOrDataUrl);
-      }
+      resolve(base64Src);
     };
 
-    if (typeof fileOrDataUrl === 'string') {
-      img.src = fileOrDataUrl;
-    } else {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        img.src = ev.target?.result as string;
-      };
-      reader.onerror = () => reject(new Error('Could not read image file.'));
-      reader.readAsDataURL(fileOrDataUrl);
-    }
+    img.src = base64Src;
   });
 }
