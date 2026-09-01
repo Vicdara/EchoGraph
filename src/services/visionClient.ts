@@ -41,6 +41,12 @@ async function analyzeViaDirectMistral(
   model: string;
 }> {
   const keys = getMistralKeys();
+  if (!keys.length) {
+    throw new Error(
+      "No Mistral API keys found. Please add VITE_MISTRAL_API_KEYS to Cloudflare Pages Environment Variables and click Retry deployment."
+    );
+  }
+
   const prompt = `You are EchoGraph Vision for blind students. Analyze the image and return ONLY valid JSON with this shape:
 {
   "diagram_type": "chart|flowchart|geometry|biology|map|circuit|table|photo|other",
