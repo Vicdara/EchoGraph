@@ -7,9 +7,14 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
+node_modules/
+dist/
 dist-ssr
+build
+.cache
+.vercel
+.netlify/
+tmp
 *.local
 
 # Editor directories and files
@@ -25,4 +30,11 @@ dist-ssr
 
 # Environment variables
 .env
+.env.*
+!.env.example
 .env.production
+
+# Local assistant settings, launchers, and backup files
+.claude/
+launch_claude.bat
+*.bak

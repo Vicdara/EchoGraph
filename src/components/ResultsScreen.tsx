@@ -8,7 +8,6 @@ import {
   Copy, 
   Check, 
   Music, 
-  Settings, 
   BookOpen, 
   Layers, 
   Activity, 
@@ -16,57 +15,68 @@ import {
 } from 'lucide-react';
 import { AnalysisRecord } from '../types';
 import { speechService } from '../services/speech';
+import { ttsProvider } from '../services/tts';
 import { sonificationService } from '../services/sonification';
+import type { StructuredDiagram } from '../types/diagram';
+import { buildFriendlyStructure } from '../utils/structuredText';
 
 interface ResultsScreenProps {
   record: AnalysisRecord;
   onNewGraph: () => void;
-  onOpenSettings: () => void;
   highContrast: boolean;
 }
 
 export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   record,
   onNewGraph,
-  onOpenSettings,
   highContrast,
 }) => {
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [isPlayingTones, setIsPlayingTones] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+  const [descriptionTab, setDescriptionTab] = useState<"explanation" | "visual">("explanation");
 
   const { description, verification, imageUrl, fileName, extractedValues } = record;
+  const storedDiagram = (record as AnalysisRecord & { structured?: StructuredDiagram }).structured;
+  const structureLooksRaw = /(?:^|\|)\s*(?:Level|Element|Type|Position|Description):/i.test(description.structure);
+  const friendlyStructure = structureLooksRaw && storedDiagram ? buildFriendlyStructure(storedDiagram) : description.structure;
+  const visualDetails = description.visualDetails || (structureLooksRaw ? description.structure : 'No additional visual metadata was returned for this image.');
+  const hasSonificationData = Boolean(extractedValues?.length);
 
-  // Track speech synthesizer state
+  // Track speech state from both Web Speech and Voxtral audio
   useEffect(() => {
-    const unsubscribe = speechService.onStateChange((speaking) => {
-      setIsSpeaking(speaking);
-    });
-    return () => {
-      unsubscribe();
-      speechService.stop();
-    };
+    const unsub = speechService.onStateChange(s=> setIsSpeaking(s));
+    const onStart = ()=> setIsSpeaking(true);
+    const onEnd = ()=> setIsSpeaking(false);
+    // ttsProvider audio element emits via speechService already for Voxtral fallback, but poll also
+    const id = setInterval(()=> {
+      const speaking = speechService.getIsSpeaking() || ttsProvider.isSpeaking();
+      setIsSpeaking(prev=> prev!==speaking ? speaking : prev);
+    }, 300);
+    window.addEventListener("tts-start", onStart);
+    window.addEventListener("tts-end", onEnd);
+    return () => { unsub(); clearInterval(id); window.removeEventListener("tts-start", onStart); window.removeEventListener("tts-end", onEnd); speechService.stop(); ttsProvider.stop(); };
   }, []);
 
-  const handleReplayAudio = () => {
+  const handleReplayAudio = async () => {
     if (isSpeaking) {
-      speechService.stop();
-    } else {
-      speechService.speakDescription(description);
+      ttsProvider.stop();
+      setIsSpeaking(false);
+      return;
     }
+    setIsSpeaking(true);
+    try {
+      await ttsProvider.speakDescription({ ...description, structure: friendlyStructure }, { channel: "summary", force: true });
+    } finally { setIsSpeaking(false); }
   };
 
   const handlePlaySonification = async () => {
-    if (isPlayingTones) return;
+    if (isPlayingTones || !extractedValues?.length) return;
     setIsPlayingTones(true);
     speechService.stop();
     
-    const values = extractedValues && extractedValues.length > 0
-      ? extractedValues
-      : [20, 40, 70, 95, 80, 50, 20];
-
     try {
-      await sonificationService.playDataCurve(values, 0.28);
+      await sonificationService.playDataCurve(extractedValues, 0.28);
     } catch (e) {
       console.error("Sonification error:", e);
     } finally {
@@ -82,7 +92,7 @@ Chart: ${fileName}
 ${description.summary}
 
 [STRUCTURE]
-${description.structure}
+${friendlyStructure}
 
 [THE DATA]
 ${description.data}
@@ -91,7 +101,7 @@ ${description.data}
 ${description.whyItMatters}
 
 [VERIFICATION STATUS]
-${verification.isVerified ? 'Verified: Confirmed accurate against chart features.' : `Uncertainty noted: ${verification.uncertainty}`}
+${verification.isVerified ? 'Uncertainty check: The vision model reported no uncertain elements.' : `Review recommended: ${verification.uncertainty}`}
 `;
 
     try {
@@ -104,26 +114,26 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
   };
 
   return (
-    <div className="flex-1 max-w-4xl w-full mx-auto px-4 py-6 sm:py-10 flex flex-col justify-between">
+    <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-1 flex-col justify-between overflow-x-hidden px-4 py-6 sm:py-10">
       <div className="space-y-8">
-        {/* Screen 2 Top Bar: App name with "← New graph" link */}
-        <div className="flex items-center justify-between pb-4 border-b border-[#ded7c5] dark:border-white/20">
+        {/* Screen 2 Top Bar */}
+        <div className="flex min-w-0 items-center justify-between gap-3 border-b border-[#ded7c5] pb-4 dark:border-white/20">
           <div className="flex items-center gap-3">
             <button
               onClick={onNewGraph}
-              className={`inline-flex items-center gap-2 text-base font-bold transition-colors focus-visible:ring-4 p-1.5 rounded-lg ${
+              className={`btn btn-ghost btn-sm group gap-2 transition-transform motion-safe:hover:-translate-x-0.5 ${
                 highContrast
-                  ? 'text-white hover:text-yellow-400 underline'
-                  : 'text-[#0d9488] hover:text-[#0f766e] hover:underline'
+                  ? 'text-white hover:text-warning'
+                  : 'text-primary'
               }`}
               aria-label="Return to upload screen and analyze a new graph"
             >
-              <ArrowLeft className="w-5 h-5" />
-              <span>← New graph</span>
+              <ArrowLeft className="size-5 transition-transform motion-safe:group-hover:-translate-x-1" />
+              <span>New graph</span>
             </button>
           </div>
 
-          <span className="text-xs sm:text-sm font-semibold text-[#718096] dark:text-white/70">
+          <span className="min-w-0 flex-1 break-all text-right text-xs font-semibold text-[#718096] dark:text-white/70 sm:text-sm">
             {fileName}
           </span>
         </div>
@@ -141,7 +151,7 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
               : 'border-[#ded7c5] bg-white shadow-xs'
           }`}
         >
-          <div className="flex items-center gap-4">
+          <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:gap-4">
             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden bg-gray-100 dark:bg-black border border-[#ded7c5] dark:border-white/30 shrink-0 flex items-center justify-center p-1">
               <img
                 src={imageUrl}
@@ -150,51 +160,51 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
               />
             </div>
 
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-xs font-bold uppercase tracking-wider text-[#718096] dark:text-white/70">
                 Audited Visual Target
               </p>
-              <h2 className="text-lg sm:text-xl font-bold text-[#1a2b4a] dark:text-white truncate max-w-xs sm:max-w-md">
+              <h2 className="break-all text-lg font-bold text-[#1a2b4a] dark:text-white sm:text-xl">
                 {fileName}
               </h2>
-              <p className="text-xs text-[#718096] dark:text-white/60 mt-0.5">
-                AI pass 1 generated • AI pass 2 verified {record.providerUsed ? `via ${record.providerUsed}` : ''} {record.modelUsed ? `(${record.modelUsed})` : ''}
+              <p className="mt-0.5 break-words text-xs text-[#718096] dark:text-white/60 [overflow-wrap:anywhere]">
+                Analyzed {record.providerUsed ? `with ${record.providerUsed}` : ''} {record.modelUsed ? `(${record.modelUsed})` : ''}
               </p>
             </div>
           </div>
 
           {/* Verification Status Badge (Real Confidence Check Result) */}
-          <div className="self-start sm:self-center">
+          <div className="w-full min-w-0 self-start sm:w-auto sm:self-center">
             {verification.isVerified ? (
               <div
                 role="status"
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold shadow-xs ${
+                className={`alert group w-full min-w-0 gap-3 px-4 py-3 text-sm shadow-sm transition motion-safe:hover:-translate-y-0.5 hover:shadow-md sm:min-w-52 ${
                   highContrast
                     ? 'bg-black text-[#00ff00] border-2 border-[#00ff00]'
-                    : 'bg-[#f0fdfa] text-[#0f766e] border border-[#99f6e4]'
+                    : 'alert-success alert-soft'
                 }`}
               >
-                <CheckCircle2 className="w-5 h-5 text-[#0d9488] dark:text-[#00ff00] shrink-0" />
+                <CheckCircle2 className="size-6 shrink-0 transition-transform motion-safe:group-hover:scale-110 motion-safe:group-hover:rotate-6" />
                 <div className="text-left">
-                  <p className="leading-tight">✓ Verified</p>
-                  <p className="text-[11px] font-normal opacity-90">
-                    Checked against axes &amp; data points
+                  <p className="font-bold leading-tight">No uncertainty flagged</p>
+                  <p className="mt-0.5 text-xs font-normal opacity-80">
+                    Model output contains no marked uncertain details
                   </p>
                 </div>
               </div>
             ) : (
               <div
                 role="status"
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-bold shadow-xs ${
+                className={`alert group w-full min-w-0 gap-3 px-4 py-3 text-sm shadow-sm transition motion-safe:hover:-translate-y-0.5 hover:shadow-md sm:min-w-52 ${
                   highContrast
                     ? 'bg-black text-[#ffff00] border-2 border-[#ffff00]'
-                    : 'bg-amber-50 text-amber-900 border border-amber-300'
+                    : 'alert-warning alert-soft'
                 }`}
               >
-                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-yellow-400 shrink-0" />
+                <AlertTriangle className="size-6 shrink-0 transition-transform motion-safe:group-hover:scale-110 motion-safe:group-hover:-rotate-6" />
                 <div className="text-left max-w-xs">
-                  <p className="leading-tight">⚠ Uncertain about:</p>
-                  <p className="text-[11px] font-normal">
+                  <p className="font-bold leading-tight">Review recommended</p>
+                  <p className="mt-0.5 text-xs font-normal opacity-80">
                     {verification.uncertainty || 'Axis resolution or fine numbers'}
                   </p>
                 </div>
@@ -204,12 +214,12 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
         </div>
 
         {/* Action Controls Bar */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           {/* Prominent teal "▶ Replay Audio" button */}
           <button
             onClick={handleReplayAudio}
             aria-label={isSpeaking ? "Pause spoken audio" : "Replay spoken audio description"}
-            className={`inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl text-base font-bold text-white shadow-md transition-all transform active:scale-95 focus-visible:ring-4 ${
+            className={`inline-flex w-full min-w-0 items-center justify-center gap-2.5 rounded-xl px-4 py-3.5 text-base font-bold text-white shadow-md transition-all transform active:scale-95 focus-visible:ring-4 sm:w-auto sm:px-6 ${
               highContrast
                 ? 'bg-black text-[#ffff00] border-3 border-[#ffff00] hover:bg-[#ffff00] hover:text-black'
                 : isSpeaking
@@ -233,9 +243,9 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
           {/* Sonification Button (Play data curve tones) */}
           <button
             onClick={handlePlaySonification}
-            disabled={isPlayingTones}
-            aria-label="Play sonification data tones"
-            className={`inline-flex items-center gap-2 px-5 py-3.5 rounded-xl text-base font-bold border transition-all transform active:scale-95 focus-visible:ring-4 ${
+            disabled={isPlayingTones || !hasSonificationData}
+            aria-label={hasSonificationData ? "Play sonification data tones" : "Data tones unavailable because no numeric values were detected"}
+            className={`inline-flex w-full min-w-0 items-center justify-center gap-2 rounded-xl border px-4 py-3.5 text-base font-bold transition-all transform active:scale-95 focus-visible:ring-4 sm:w-auto sm:px-5 ${
               isPlayingTones
                 ? 'bg-[#dde6f1] dark:bg-white/20 text-[#1a2b4a] dark:text-white'
                 : highContrast
@@ -244,14 +254,14 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
             }`}
           >
             <Music className={`w-5 h-5 ${isPlayingTones ? 'text-[#0d9488] animate-bounce' : 'text-[#4e84b8]'}`} />
-            <span>{isPlayingTones ? 'Playing Tones...' : '🎵 Play Data Tones'}</span>
+            <span>{isPlayingTones ? 'Playing tones...' : hasSonificationData ? 'Play data tones' : 'No numeric data to play'}</span>
           </button>
 
           {/* Secondary text button "Copy as Text" */}
           <button
             onClick={handleCopyText}
             aria-label="Copy full text description to clipboard"
-            className={`inline-flex items-center gap-2 px-5 py-3.5 rounded-xl text-base font-semibold border transition-all focus-visible:ring-4 ${
+            className={`inline-flex w-full min-w-0 items-center justify-center gap-2 rounded-xl border px-4 py-3.5 text-base font-semibold transition-all focus-visible:ring-4 sm:w-auto sm:px-5 ${
               copied
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-400'
                 : highContrast
@@ -273,11 +283,15 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
           </button>
         </div>
 
-        {/* 4 Structured Description Sections */}
-        <div className="space-y-5">
+        <div role="tablist" aria-label="Description view" className="tabs tabs-box grid w-full grid-cols-2 sm:w-fit">
+          <button role="tab" aria-selected={descriptionTab === "explanation"} onClick={() => setDescriptionTab("explanation")} className={`tab min-w-0 gap-1 px-2 sm:gap-2 sm:px-4 ${descriptionTab === "explanation" ? "tab-active" : ""}`}><BookOpen className="size-4 shrink-0" />Explanation</button>
+          <button role="tab" aria-selected={descriptionTab === "visual"} onClick={() => setDescriptionTab("visual")} className={`tab min-w-0 gap-1 px-2 sm:gap-2 sm:px-4 ${descriptionTab === "visual" ? "tab-active" : ""}`}><Layers className="size-4 shrink-0" />Visual details</button>
+        </div>
+
+        {descriptionTab === "explanation" ? <div className="space-y-5">
           {/* Section 1: Summary */}
           <section
-            className={`p-6 rounded-2xl border transition-all ${
+            className={`break-words rounded-2xl border p-4 transition-all [overflow-wrap:anywhere] sm:p-6 ${
               highContrast
                 ? 'border-white bg-black text-white'
                 : 'border-[#ded7c5] bg-white shadow-xs'
@@ -296,7 +310,7 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
 
           {/* Section 2: Structure */}
           <section
-            className={`p-6 rounded-2xl border transition-all ${
+            className={`break-words rounded-2xl border p-4 transition-all [overflow-wrap:anywhere] sm:p-6 ${
               highContrast
                 ? 'border-white bg-black text-white'
                 : 'border-[#ded7c5] bg-white shadow-xs'
@@ -309,13 +323,13 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
               </h3>
             </div>
             <p className="text-base leading-relaxed text-[#2d3748] dark:text-white/90 whitespace-pre-line">
-              {description.structure}
+              {friendlyStructure}
             </p>
           </section>
 
           {/* Section 3: The Data */}
           <section
-            className={`p-6 rounded-2xl border transition-all ${
+            className={`break-words rounded-2xl border p-4 transition-all [overflow-wrap:anywhere] sm:p-6 ${
               highContrast
                 ? 'border-white bg-black text-white'
                 : 'border-[#ded7c5] bg-white shadow-xs'
@@ -334,7 +348,7 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
 
           {/* Section 4: Why It Matters */}
           <section
-            className={`p-6 rounded-2xl border transition-all ${
+            className={`break-words rounded-2xl border p-4 transition-all [overflow-wrap:anywhere] sm:p-6 ${
               highContrast
                 ? 'border-white bg-black text-white'
                 : 'border-[#ded7c5] bg-white shadow-xs'
@@ -350,21 +364,13 @@ ${verification.isVerified ? 'Verified: Confirmed accurate against chart features
               {description.whyItMatters}
             </p>
           </section>
-        </div>
+        </div> : <section className={`min-w-0 rounded-2xl border p-4 sm:p-6 ${highContrast ? 'border-white bg-black text-white' : 'border-base-300 bg-base-100 shadow-xs'}`}>
+          <div className="mb-3 flex min-w-0 items-start gap-2.5 border-b border-base-300 pb-3"><Layers className="size-5 shrink-0 text-primary" /><div className="min-w-0"><h3 className="text-lg font-bold">Exact visual details</h3><p className="text-xs text-base-content/60">Positions, colors, shapes, labels, and connections detected in the image.</p></div></div>
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-base-content/80 [overflow-wrap:anywhere]">{visualDetails}</p>
+        </section>}
       </div>
 
-      {/* Screen 2 Footer: Matching Screen 1 */}
-      <footer className="mt-12 pt-6 border-t border-[#ded7c5] dark:border-white/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-[#718096] dark:text-white/70">
-        <p>Powered by free AI models — no API key required</p>
-        <button
-          onClick={onOpenSettings}
-          aria-label="Use your own API key (optional)"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1a2b4a] dark:text-white hover:underline focus-visible:ring-4 p-1 rounded"
-        >
-          <Settings className="w-3.5 h-3.5" />
-          <span>Use your own API key (optional)</span>
-        </button>
-      </footer>
+      <footer className="mt-12 border-t border-base-300 pt-6 text-xs text-base-content/60">Powered by hosted AI services - judges do not need an API key.</footer>
     </div>
   );
 };

@@ -1,6 +1,8 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
 
 @layer base {
   :root {
@@ -23,10 +25,40 @@
   }
 
   body {
+    min-width: 0;
+    margin: 0;
+    overflow-x: hidden;
     background-color: var(--bg-primary);
     color: var(--text-primary);
     font-family: 'Atkinson Hyperlegible', system-ui, -apple-system, sans-serif;
     transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  html,
+  #root {
+    min-width: 0;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  li,
+  label,
+  button,
+  [role="status"],
+  [role="alert"] {
+    overflow-wrap: anywhere;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
   }
 
   /* Universal high-visibility focus indicator for keyboard navigation */
@@ -109,4 +141,13 @@ html.high-contrast ::-webkit-scrollbar-track {
 
 html.high-contrast ::-webkit-scrollbar-thumb {
   background: #ffffff;
+}
+
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }

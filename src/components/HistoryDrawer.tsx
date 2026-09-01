@@ -39,15 +39,15 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
       aria-labelledby="history-drawer-title"
     >
       <div
-        className={`w-full max-w-md h-full flex flex-col justify-between p-6 shadow-2xl transition-all ${
+        className={`flex h-full w-full min-w-0 max-w-md flex-col justify-between p-4 shadow-2xl transition-all sm:p-6 ${
           highContrast
             ? 'bg-black text-white border-l-2 border-white'
             : 'bg-white text-[#1a2b4a] border-l border-[#ded7c5]'
         }`}
       >
         <div>
-          <div className="flex items-center justify-between pb-4 border-b border-[#ded7c5] dark:border-white/20">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2 border-b border-[#ded7c5] pb-4 dark:border-white/20">
+            <div className="flex min-w-0 items-center gap-2">
               <Clock className="w-5 h-5 text-[#0d9488] dark:text-yellow-400" />
               <h2 id="history-drawer-title" className="text-xl font-bold">
                 Session History
@@ -95,7 +95,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                       {record.description.summary}
                     </p>
                     <span className="inline-block text-[10px] text-[#0d9488] dark:text-yellow-400 font-semibold mt-1">
-                      {record.verification.isVerified ? '✓ Verified' : '⚠ Uncertain'}
+                      {record.verification.isVerified ? 'No uncertainty flagged' : 'Review recommended'}
                     </span>
                   </div>
                   <ArrowRight className="w-4 h-4 text-[#718096] shrink-0" />

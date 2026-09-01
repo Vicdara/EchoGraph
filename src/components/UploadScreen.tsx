@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { UploadCloud, Image as ImageIcon, Settings, AlertCircle, Loader2, Sparkles, X, FileQuestion } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, AlertCircle, Loader2, Sparkles, X, FileQuestion, EyeOff, Headphones, MessageCircle } from 'lucide-react';
 import { SAMPLE_GRAPHS } from '../data/sampleGraphs';
 import { SampleGraph } from '../types';
 import { optimizeImageForVision } from '../utils/imageOptimizer';
@@ -9,7 +9,6 @@ interface UploadScreenProps {
   isLoading: boolean;
   loadingStep: string;
   error: string | null;
-  onOpenSettings: () => void;
   highContrast: boolean;
 }
 
@@ -18,7 +17,6 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
   isLoading,
   loadingStep,
   error,
-  onOpenSettings,
   highContrast,
 }) => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -59,15 +57,21 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
       alert('Image size exceeds 25MB limit. Please choose a smaller image.');
       return;
     }
-
+    if (!file.type.startsWith('image/')) {
+      alert('That file is not an image. Paste or drop a PNG, JPG, WebP, or SVG.');
+      return;
+    }
     const name = customName || file.name;
     try {
       const optimizedDataUrl = await optimizeImageForVision(file);
+      if (!optimizedDataUrl.startsWith('data:image/')) throw new Error('Could not read image');
       setSelectedImage(optimizedDataUrl);
       setFileName(name);
       setSelectedSample(null);
     } catch (e) {
       console.error('Error processing image:', e);
+      setPasteNotice('Could not read that image — try another file or screenshot.');
+      setTimeout(()=> setPasteNotice(null), 4000);
     }
   };
 
@@ -132,13 +136,28 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
   };
 
   return (
-    <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col justify-between">
+    <main className="mx-auto flex w-full max-w-4xl min-w-0 flex-1 flex-col justify-between overflow-x-hidden px-4 py-8 sm:py-12">
       <div className="space-y-8">
+        <section className="hero overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-sm" aria-labelledby="barrier-heading">
+          <div className="hero-content grid w-full min-w-0 gap-6 px-4 py-6 sm:grid-cols-[1.25fr_1fr] sm:px-8 sm:py-7">
+            <div className="min-w-0">
+              <span className="badge badge-outline badge-sm h-auto max-w-full whitespace-normal py-1 text-center">Built for Amara, a 16-year-old blind student</span>
+              <h2 id="barrier-heading" className="mt-3 text-2xl font-bold leading-tight sm:text-3xl">A diagram should not stop the lesson.</h2>
+              <p className="mt-3 text-sm leading-relaxed text-base-content/70 sm:text-base">When a worksheet gives Amara an unlabeled image, her screen reader cannot explain the science inside it. EchoGraph turns that visual into something she can hear, explore step by step, and question.</p>
+            </div>
+            <div className="grid gap-2" aria-label="EchoGraph learning flow">
+              <div className="flex items-center gap-3 rounded-box bg-base-200 p-3"><EyeOff className="size-5 shrink-0 text-secondary" /><span className="text-sm"><strong>Barrier:</strong> visual-only learning material</span></div>
+              <div className="flex items-center gap-3 rounded-box bg-base-200 p-3"><Headphones className="size-5 shrink-0 text-secondary" /><span className="text-sm"><strong>Access:</strong> structured spoken explanation</span></div>
+              <div className="flex items-center gap-3 rounded-box bg-base-200 p-3"><MessageCircle className="size-5 shrink-0 text-secondary" /><span className="text-sm"><strong>Learning:</strong> voice and text follow-up questions</span></div>
+            </div>
+          </div>
+        </section>
+
         {/* Error Alert if any */}
         {error && (
           <div
             role="alert"
-            className="p-4 rounded-xl border border-red-300 dark:border-red-500 bg-red-50 dark:bg-red-950/40 text-red-900 dark:text-red-200 flex items-start gap-3 shadow-sm"
+            className="flex min-w-0 items-start gap-3 break-words rounded-xl border border-error/40 bg-error/10 p-4 text-error shadow-sm [overflow-wrap:anywhere]"
           >
             <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
             <div>
@@ -193,7 +212,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
               tabIndex={0}
               role="button"
               aria-label="Drag a chart or graph here, or click to upload. Press enter to browse files."
-              className={`w-full min-h-[260px] sm:min-h-[300px] border-3 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 focus-visible:ring-4 ${
+              className={`flex min-h-[260px] w-full min-w-0 cursor-pointer flex-col items-center justify-center rounded-2xl border-3 border-dashed p-4 text-center transition-all duration-200 focus-visible:ring-4 sm:min-h-[300px] sm:p-8 ${
                 isDragOver
                   ? 'border-[#0d9488] bg-[#0d9488]/10 scale-[1.01]'
                   : highContrast
@@ -225,19 +244,19 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
             </div>
           ) : (
             <div
-              className={`w-full border-2 rounded-2xl p-6 transition-all ${
+              className={`w-full min-w-0 rounded-2xl border-2 p-4 transition-all sm:p-6 ${
                 highContrast
                   ? 'border-white bg-black'
                   : 'border-[#ded7c5] bg-white shadow-md'
               }`}
             >
-              <div className="flex items-center justify-between pb-4 border-b border-[#ded7c5] dark:border-white/20">
-                <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center justify-between gap-2 border-b border-[#ded7c5] pb-4 dark:border-white/20">
+                <div className="flex min-w-0 items-center gap-3">
                   <div className="p-2 rounded-lg bg-[#f0f4f9] dark:bg-white/10 text-[#1a2b4a] dark:text-white">
                     <ImageIcon className="w-5 h-5" />
                   </div>
-                  <div>
-                    <p className="font-bold text-base text-[#1a2b4a] dark:text-white truncate max-w-xs sm:max-w-md">
+                  <div className="min-w-0">
+                    <p className="break-all text-base font-bold text-[#1a2b4a] dark:text-white">
                       {fileName || 'Selected Chart Image'}
                     </p>
                     <p className="text-xs text-[#718096] dark:text-white/70">
@@ -250,7 +269,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
                   onClick={handleClearSelected}
                   disabled={isLoading}
                   aria-label="Remove selected image"
-                  className="p-2 rounded-lg text-[#718096] hover:text-[#1a2b4a] dark:text-white/70 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/20 transition-colors focus-visible:ring-4"
+                  className="shrink-0 rounded-lg p-2 text-[#718096] transition-colors hover:bg-gray-100 hover:text-[#1a2b4a] focus-visible:ring-4 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -272,7 +291,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
                   </p>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Visual recognition identifies axes, trends, and data points.</li>
-                    <li>AI runs a <strong>self-verification check</strong> against the original figure.</li>
+                    <li>Unclear text or values are marked instead of being silently guessed.</li>
                     <li>Spoken audio begins automatically for screen readers &amp; headphones.</li>
                   </ul>
                 </div>
@@ -287,7 +306,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
             onClick={handleSubmit}
             disabled={!selectedImage || isLoading}
             aria-label={isLoading ? `Analyzing image: ${loadingStep}` : 'Describe This Graph'}
-            className={`w-full sm:w-auto min-w-[280px] px-8 py-4 rounded-xl text-lg font-bold text-white shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-3 focus-visible:ring-4 ${
+            className={`flex w-full min-w-0 items-center justify-center gap-3 rounded-xl px-4 py-4 text-lg font-bold text-white shadow-lg transition-all transform active:scale-95 focus-visible:ring-4 sm:w-auto sm:min-w-[280px] sm:px-8 ${
               !selectedImage || isLoading
                 ? 'opacity-50 cursor-not-allowed bg-gray-400 dark:bg-gray-700'
                 : highContrast
@@ -312,20 +331,20 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
         {/* 1-Click Sample Charts for Quick Judge / Student Testing */}
         <section
           aria-labelledby="sample-charts-heading"
-          className={`p-6 rounded-2xl border transition-all ${
+          className={`min-w-0 rounded-2xl border p-4 transition-all sm:p-6 ${
             highContrast
               ? 'border-white/40 bg-black'
               : 'border-[#ded7c5] bg-[#ffffff] shadow-xs'
           }`}
         >
-          <div className="flex items-center gap-2 mb-3">
-            <FileQuestion className="w-5 h-5 text-[#0d9488] dark:text-yellow-400" />
+          <div className="mb-3 flex min-w-0 items-start gap-2">
+            <FileQuestion className="mt-0.5 h-5 w-5 shrink-0 text-[#0d9488] dark:text-yellow-400" />
             <h2 id="sample-charts-heading" className="text-base font-bold text-[#1a2b4a] dark:text-white">
               Try with Real AP Biology Sample Graphs (1-Click Demo)
             </h2>
           </div>
           <p className="text-xs text-[#4a5568] dark:text-white/80 mb-4">
-            Select any real test chart below to test the AI vision description &amp; confidence verification:
+            Choose a sample, then run the same live vision pipeline used for uploaded images:
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -346,7 +365,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
                       : 'border-[#e2dcd0] bg-[#faf9f6] hover:border-[#0d9488] text-[#1a2b4a]'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
+                  <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1">
                     <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#dde6f1] dark:bg-white/20 text-[#1a2b4a] dark:text-white">
                       {sample.type}
                     </span>
@@ -367,18 +386,7 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({
         </section>
       </div>
 
-      {/* Screen 1 Footer: Small text, left-aligned, with gear icon */}
-      <footer className="mt-12 pt-6 border-t border-[#ded7c5] dark:border-white/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-[#718096] dark:text-white/70">
-        <p>Powered by free AI models — works instantly, no setup needed</p>
-        <button
-          onClick={onOpenSettings}
-          aria-label="Use your own API key (optional)"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1a2b4a] dark:text-white hover:underline focus-visible:ring-4 p-1 rounded"
-        >
-          <Settings className="w-3.5 h-3.5" />
-          <span>Use your own API key (optional)</span>
-        </button>
-      </footer>
+      <footer className="mt-12 border-t border-base-300 pt-6 text-xs text-base-content/60">Powered by hosted AI services - judges do not need an API key.</footer>
     </main>
   );
 };

@@ -3,6 +3,7 @@ export interface ChartDescription {
   structure: string;
   data: string;
   whyItMatters: string;
+  visualDetails?: string;
   rawText?: string;
 }
 

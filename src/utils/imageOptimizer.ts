@@ -1,9 +1,17 @@
 /**
  * Optimizes, resizes, and converts any uploaded image (PNG, HEIC, JPG, WebP)
- * to a lightweight, crisp JPEG/PNG data URL (max 1600px dimension).
+ * to an OCR-friendly JPEG data URL. Small screenshots are enlarged so vision
+ * models can inspect fine labels; large images are capped to control payloads.
  * This eliminates payload timeouts, connection errors, and 413 limits on AI vision APIs.
  */
-export async function optimizeImageForVision(fileOrDataUrl: File | string, maxDimension = 1600, quality = 0.8): Promise<string> {
+export function calculateVisionDimensions(width: number, height: number, maxDimension = 1600, minLongEdge = 1000): { width: number; height: number } {
+  if (width <= 0 || height <= 0) return { width, height };
+  const longEdge = Math.max(width, height);
+  const scale = longEdge > maxDimension ? maxDimension / longEdge : longEdge < minLongEdge ? Math.min(4, minLongEdge / longEdge) : 1;
+  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
+
+export async function optimizeImageForVision(fileOrDataUrl: File | string, maxDimension = 1600, quality = 0.9): Promise<string> {
   let base64Src = "";
   if (typeof fileOrDataUrl === "string") {
     base64Src = fileOrDataUrl;
@@ -20,17 +28,7 @@ export async function optimizeImageForVision(fileOrDataUrl: File | string, maxDi
     const img = new Image();
 
     img.onload = () => {
-      let { width, height } = img;
-
-      if (width > maxDimension || height > maxDimension) {
-        if (width > height) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        } else {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
-        }
-      }
+      const { width, height } = calculateVisionDimensions(img.width, img.height, maxDimension);
 
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -45,6 +43,8 @@ export async function optimizeImageForVision(fileOrDataUrl: File | string, maxDi
       // Draw with white background in case of transparent PNG/SVG
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, width, height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, width, height);
 
       const optimizedDataUrl = canvas.toDataURL('image/jpeg', quality);
